@@ -1,0 +1,20 @@
+# Code-only deployment on verified existing runtime images.
+# Use the full Dockerfiles whenever dependency manifests change.
+# Context: staged backend/, shared/, renderer sources in remotion/,
+# built client in frontend-dist/, and nginx.conf. Never include .env or media.
+ARG API_BASE=sosyal_medya_agentic_ai-api:latest
+ARG WORKER_BASE=sosyal_medya_agentic_ai-worker:latest
+ARG WEB_BASE=sosyal_medya_agentic_ai-web:latest
+
+FROM ${API_BASE} AS api
+COPY backend /app/backend
+COPY shared /app/shared
+
+FROM ${WORKER_BASE} AS worker
+COPY backend /app/backend
+COPY shared /app/shared
+COPY remotion /app/remotion/production
+
+FROM ${WEB_BASE} AS web
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend-dist /usr/share/nginx/html
