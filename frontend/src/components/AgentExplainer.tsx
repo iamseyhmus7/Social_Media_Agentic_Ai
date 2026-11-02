@@ -1,0 +1,12 @@
+import {useState} from 'react';
+import {ArrowDown,ArrowUpRight,ShieldCheck} from 'lucide-react';
+import {publicTeam as agents} from '../content/public-team';
+export function AgentExplainer({motionEnabled,onToggleMotion}:{motionEnabled:boolean;onToggleMotion:()=>void}){
+ const [selected,setSelected]=useState('motion');
+ const current=agents.find(a=>a.id===selected)!; const Icon=current.icon;
+ return <section id="agentic-ai" className="cinema-agents cinema-section">
+ <div className="cinema-heading"><div><span className="cinema-kicker">YARATICI EKİBİNLE TANIŞ.</span><h2>Sen fikrini anlat.<br/>Sahne işe koyulsun.</h2></div><p>Metin yazmak, ses kaydetmek, görüntü bulmak… Hepsini tek başına yapman gerekmez. Sahne’nin yapay zekâ yardımcıları bu işleri adım adım hazırlar. Bir adıma dokun, sana nasıl yardımcı olduğunu gör.</p></div>
+ <div className="cinema-agent-layout"><div className="cinema-agent-list" aria-label="Video hazırlama adımları">{agents.map((a,i)=>{const AgentIcon=a.icon;return <div key={a.id}><button aria-pressed={selected===a.id} aria-expanded={selected===a.id} onClick={()=>setSelected(a.id)}><span className="cinema-agent-number">{String(i+1).padStart(2,'0')}</span><AgentIcon size={20}/><span><strong>{a.name}</strong><small>{a.summary}</small></span><ArrowUpRight size={17}/></button>{selected===a.id&&<div className="cinema-mobile-task"><p>{a.input}</p><strong>Senin için hazırlanan</strong><p>{a.output}</p><small>{a.benefit}</small></div>}{i<7&&<ArrowDown size={14} className="cinema-flow-arrow"/>}</div>;})}</div><aside className="cinema-agent-detail" aria-live="polite"><span className="cinema-kicker">BU ADIMDA / {String(agents.indexOf(current)+1).padStart(2,'0')}</span><Icon size={43} strokeWidth={1}/><h3>{current.name}</h3><p>{current.summary}</p><dl><dt>Sen ne söylersin?</dt><dd>{current.input}</dd><dt>Sahne ne hazırlar?</dt><dd>{current.output}</dd><dt>Sana ne kazandırır?</dt><dd>{current.benefit}</dd></dl><div className="cinema-agent-note"><ShieldCheck size={19}/><span>Hazırlanan videoyu önce sen izlersin. Beğenmediğin yerler için değişiklik isteyebilirsin. Onayın olmadan yayınlanmaz.</span></div></aside></div>
+ <div className="cinema-diagram-note"><span>Bu bölüm hazırlık adımlarını tanıtır. Kendi videonun ilerleyişini hesabından takip edebilirsin.</span><button onClick={onToggleMotion} aria-pressed={motionEnabled}>Hareketli sunum: {motionEnabled?'açık':'kapalı'}</button></div>
+ </section>;
+}
