@@ -1,0 +1,114 @@
+/* A quiet illustrated canvas continues through the complete public landing. */
+.cinematic-home {
+  background-image: linear-gradient(#11141955, #11141955), url('/images/sahne-page-atmosphere.webp');
+  background-size: 100% 100%, max(100%, 1440px) auto;
+  background-position: 0 0, center 470px;
+  background-repeat: no-repeat, repeat-y;
+}
+
+.cinematic-home .cinema-nav {
+  background: #111419e8;
+}
+
+.cinematic-home :is(.cinema-hero-copy, .cinema-heading > div, .landing-section-heading > div) {
+  position: relative;
+  isolation: isolate;
+}
+
+.cinematic-home :is(.cinema-hero-copy, .cinema-heading > div, .landing-section-heading > div)::before {
+  content: '';
+  position: absolute;
+  inset: -24px -35px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 42% 50%, #111419b3 5%, #11141980 45%, #11141900 74%);
+}
+
+.cinematic-home :is(.cinema-agent-detail, .journey-shell) {
+  background: #191d27f2;
+  border-color: #a98bff42;
+  box-shadow: 0 24px 64px #080a101f;
+}
+
+.cinematic-home .cinema-agent-list {
+  background: linear-gradient(90deg, #111419c7, #11141980);
+}
+
+/* The opening artwork has its own wordmark: keep live copy below it. */
+.cinema-brand-stage {
+  position: relative;
+  isolation: isolate;
+  height: clamp(440px, 43vw, 680px);
+  overflow: hidden;
+  background: transparent;
+}
+
+.cinema-brand-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 48%;
+  mask-image: linear-gradient(#000 0%, #000 76%, transparent 100%);
+  pointer-events: none;
+}
+
+.cinema-brand-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(180deg, #11141933, transparent 18%, transparent 68%, #11141955 100%);
+}
+
+.cinema-brand-actions {
+  position: absolute;
+  inset: auto 0 36px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;
+  padding-inline: 24px calc(18% + 24px);
+}
+
+.cinema-brand-actions .cinema-text-link {
+  color: var(--text);
+  text-shadow: 0 1px 8px #111419;
+}
+
+.cinematic-home .cinema-hero {
+  padding-top: 52px;
+}
+
+.cinematic-home .cinema-hero h1 {
+  font-size: clamp(44px, 4.7vw, 66px);
+}
+
+@media (max-width: 900px) {
+  .cinema-brand-stage { height: 420px; }
+  .cinema-brand-background { object-position: 45% 48%; }
+  .cinema-brand-actions { bottom: 24px; padding-right: 12%; }
+}
+
+@media (max-width: 600px) {
+  .cinematic-home {
+    background-image: linear-gradient(#11141944, #11141944), url('/images/sahne-page-atmosphere.webp');
+    background-size: 100% 100%, 760px auto;
+    background-position: 0 0, 42% 350px;
+  }
+  .cinema-brand-stage { height: clamp(330px, 88vw, 400px); }
+  .cinema-brand-background { object-position: 43% 48%; }
+  .cinema-brand-actions { bottom: 22px; padding-inline: 20px; gap: 18px; }
+  .cinema-brand-actions .cinema-button { padding-inline: 15px; gap: 12px; font-size: 13px; }
+  .cinema-brand-actions .cinema-text-link { font-size: 12px; gap: 7px; }
+  .cinematic-home .cinema-hero { padding-top: 28px; }
+  .cinematic-home .cinema-hero h1 { font-size: clamp(42px, 11.5vw, 62px); }
+}
+
+@media (max-width: 360px) {
+  .cinema-brand-actions { padding-inline: 14px; gap: 12px; }
+  .cinema-brand-actions .cinema-button { padding-inline: 12px; gap: 8px; font-size: 12px; }
+}
