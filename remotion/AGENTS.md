@@ -1,0 +1,23 @@
+# Remotion çalışma kuralları
+
+- Ana uygulama/pipeline yerine bu bağımsız Remotion projesinde çalış. İlgisiz deneyleri ve çalışan servisleri koru.
+- Yeni tasarım veya kapsamlı görsel revizyonda kurulu `frontend-design` skill'ini kullan. Tipografi, renk, kadraj ve görsel hiyerarşi için açık bir yön seç; hareket/zamanlama uygulamasında Remotion skill'lerini esas al.
+- Animasyonları Remotion kare zamanına bağla. Frontend örneklerindeki CSS animasyonlarını/zamanlayıcılarını doğrudan video zaman çizelgesine taşıma.
+- Yeni/kararsız API kullanırken Context7 mevcutsa kütüphane ve sürüm bilgisini belirterek dokümantasyon kontrolü yap; gerekirse resmî kaynakla doğrula. Doküman sorgularına gizli bilgiler, .env içeriği veya özel proje dosyaları ekleme.
+- İzin verilen tarayıcı araçlarıyla Studio'yu incele. Mevcutsa Playwright MCP'yi önizleme kontrollerinde kullan; aynı iş için birden fazla otomasyon katmanını çoğaltma. Sahne ortaları yanında geçiş öncesi/ortası/sonrası, yazı taşmaları ve altyazı güvenli alanlarını kontrol et. Görsel kontrolün yerini yalnızca DOM/snapshot kontrolüyle doldurma.
+- `@remotion/three` kurulu. Gerçek 3D geometri, ışık ve kamera ihtiyacı varsa kullan; her videoya gereksiz 3D ekleme. Remotion paketlerini tek sürümde tut; mevcut sürümü gereksiz yere yükseltme.
+- Ücretli servis/GPU kiralama başlatma. Fotoğraf montajını kesintisiz özne animasyonu olarak sunma.
+
+2026-10-24: User explicitly authorized production integration. Keep independent examples intact and add the general renderer under production/ with packages pinned to 4.0.538. Backend passes validated JSON and a private per-run media directory; agent output is never executable code. Production is 1080x1920/30fps H.264, with original-speed narration mixed by FFmpeg. This supersedes the earlier restriction against touching the main pipeline.
+
+2026-10-26: User selected dynamic social media editing: strong opening, word-timed highlighted captions, rhythmic punch-in cuts and restrained short push transitions. Re-edit existing verified clips and original-speed voice as a separate revision. Kaggle remains motion generation only; Remotion renders in the local Docker media worker.
+
+2026-10-26 latest: Subtitle highlights and occasional pushes were rejected as insufficient. Editorial mode is a distinct directed montage: three-source cold open, kinetic typography, image masks, visual chapters, transitions and original sound design. Keep compiler in a separate process; verified previous dynamic render was 75.943 seconds / 900 frames, total107.75.
+
+2026-10-26 current preference: User requests content-driven automatic editing rather than selecting fixed montage templates. New productions use auto: narrative event states/continuity, distinct shot references, sampled-frame editorial review and validated source trims/timeline decisions. First pilot: realistic 30-second narrative with people and objects. Launch acceptance only through authenticated web UI; no approval or publication without user action. Existing styles and versions remain available.
+
+2026-10-27: User approved general-purpose autonomous production from a topic prompt and natural-language feedback, not a history-specific flow. New productions use pipeline v3: MiMo Supervisor and media roles, model-selected bounded tools, validated dynamic scene composition, targeted revisions and clarification for ambiguous feedback. Legacy render paths remain for existing jobs; new UI offers one automatic mode. Preserve independent examples and existing media. No executable model-generated code or automatic publication.
+
+2026-10-27 latest user authorization: Remove old independent Remotion videos and their example code/assets/tools. Preserve the Adana Taşköprü application project and all its media. This supersedes prior instructions to retain independent examples. Production renderer and legacy application-run compatibility remain necessary.
+
+2026-10-28: User explicitly removed mandatory post-render model/agent review. New runs hand the rendered video directly to the owner after deterministic technical checks and local audio/package completion. No MiMo preview/final quality inference or Supervisor approval after rendering. Preserve creative planning and source observations before rendering. Human content approval and separate explicit publication remain required. Migrate the current Napoleon run without regenerating its clips or completed render parts; keep older run policies compatible.
