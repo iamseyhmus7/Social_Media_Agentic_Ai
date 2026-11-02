@@ -1,0 +1,1 @@
+export const SceneDesignDefaults={camera:{kind:'locked',strength:.04},layout:'full',secondary_shot_id:null,typography:'rise',title_size:64,lighting:'none',particles:0,font_family:'sans',text_style:'solid',template:'none',object_3d:null};
