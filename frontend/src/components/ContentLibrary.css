@@ -1,0 +1,28 @@
+.library-selection{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:18px 0 10px}
+.library-selection>span{color:var(--muted);font-size:12px}
+.library-selection>.button{margin-left:auto}
+.managed-library-list{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.managed-library-row{display:grid;grid-template-columns:18px minmax(0,1fr) 34px;align-items:center;gap:12px;padding:0 8px;border:1px solid transparent;border-radius:12px}
+.managed-library-row.is-selected{background:#f6f2ff;border-color:#ded0fd}
+.managed-library-row input[type=checkbox],.library-selection input{accent-color:var(--violet);width:16px;height:16px}
+.managed-library-content{min-width:0}
+.managed-library-content .project-list{margin:0}
+.managed-library-content .project-row{width:100%}
+.library-delete{color:#b33f52;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px}
+.library-delete:hover:not(:disabled){background:#fff0f2}
+.deletion-titles{max-height:230px;overflow:auto;padding-left:22px;margin:18px 0;line-height:1.7}
+.deletion-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px;flex-wrap:wrap}
+@media(max-width:600px){.library-selection{gap:12px}.library-selection>.button{margin-left:0}.managed-library-row{grid-template-columns:16px minmax(0,1fr) 30px;gap:6px;padding:0 2px}.managed-library-content .project-row{gap:8px}.managed-library-content .project-row time{display:none}}
+
+/* On phones, give the actual title room before the secondary status metadata. */
+@media(max-width:600px){
+  .managed-library-row{padding-block:10px;gap:8px}
+  .managed-library-content .project-row{display:grid;grid-template-columns:47px minmax(0,1fr);gap:8px 10px;text-align:left}
+  .managed-library-content .project-thumb{grid-column:1;grid-row:1 / span 2;align-self:start}
+  .managed-library-content .project-row-copy{grid-column:2;grid-row:1;min-width:0}
+  .managed-library-content .project-row-copy strong{font-size:15px;line-height:1.5;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+  .managed-library-content .project-row-copy small{font-size:11px;line-height:1.6;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .managed-library-content .project-row>.badge{grid-column:2;grid-row:2;justify-self:start;font-size:11px;line-height:1.5}
+  .library-controls .search input{font-size:16px}
+  .library-controls>select{font-size:14px;min-height:44px}
+}
