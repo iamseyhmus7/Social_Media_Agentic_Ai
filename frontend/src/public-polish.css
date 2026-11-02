@@ -1,0 +1,125 @@
+/* Public-facing typography: preserve the approved art, give the words priority. */
+.cinematic-home {
+  --text: #f7f4ef;
+  --muted: #c3c9d4;
+  --accent: #b69cff;
+}
+
+.cinematic-home :is(h1, h2) { font-weight: 500; text-wrap: balance; }
+.cinematic-home .cinema-nav nav { font-size: 15px; gap: 26px; }
+.cinematic-home .cinema-nav nav a { display: inline-flex; align-items: center; min-height: 44px; }
+.cinematic-home .cinema-login { display: inline-flex; align-items: center; min-height: 44px; }
+.cinematic-home .cinema-kicker { font-size: 12px; letter-spacing: 1.6px; color: #c4afff; }
+.cinematic-home :is(.cinema-hero-copy > p, .cinema-heading > p, .landing-section-heading > p) { line-height: 1.8; }
+.cinematic-home :is(.cinema-hero-copy, .cinema-heading > div, .landing-section-heading > div)::before {
+  z-index: 0;
+  inset: -30px -40px;
+  background: radial-gradient(ellipse at 38% 50%, #111419f2 8%, #111419c7 48%, #11141900 76%);
+}
+.cinematic-home :is(.cinema-hero-copy, .cinema-heading > div, .landing-section-heading > div) > * { position: relative; z-index: 1; }
+.cinematic-home .cinema-hero-facts { font-size: 13px; color: #d3d8e2; gap: 18px; }
+.cinematic-home .cinema-step-grid article { padding: 24px; background: #111419ed; border: 1px solid #3b3547; }
+.cinematic-home .cinema-step-grid p { font-size: 17px; line-height: 1.75; color: #cbd0d9; }
+.cinematic-home .cinema-agent-list { background: #111419eb; }
+.cinematic-home .cinema-agent-list strong { font-size: 17px; font-weight: 600; }
+.cinematic-home .cinema-agent-list small { font-size: 14px; line-height: 1.6; margin-top: 3px; }
+.cinematic-home .cinema-agent-number { font-size: 12px; }
+.cinematic-home .cinema-agent-detail dt { font-size: 13px; }
+.cinematic-home .cinema-agent-detail dd { line-height: 1.75; }
+.cinematic-home :is(.cinema-agent-note, .cinema-diagram-note) { font-size: 13px; line-height: 1.75; }
+.cinematic-home .cinema-diagram-note button { min-height: 44px; font-size: 13px; }
+.cinematic-home .cinema-faq > div:last-child { background: #111419d9; padding: 24px 28px; }
+.cinematic-home .cinema-faq summary { font-size: 18px; min-height: 44px; line-height: 1.6; }
+.cinematic-home .cinema-faq details p { font-size: 16px; line-height: 1.8; }
+.cinematic-home :is(.cinema-film-top, .cinema-hero-film figcaption span) { font-size: 12px; }
+.cinematic-home .cinema-footer { font-size: 14px; line-height: 1.7; }
+.cinematic-home .cinema-final p { font-size: 15px; }
+
+/* Real videos are an explicit snapshot; native players keep sound and full frames. */
+.cinematic-home .cinema-example-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.cinematic-home .cinema-example-grid figure { display: flex; flex-direction: column; min-width: 0; padding: 16px; background: #111419ed; border: 1px solid #3b3547; }
+.cinematic-home .cinema-example-grid figcaption { padding: 0 0 20px; min-height: 176px; }
+.cinematic-home .cinema-example-grid h3 { font-size: 22px; line-height: 1.3; font-weight: 500; letter-spacing: -.35px; color: var(--text); overflow-wrap: anywhere; }
+.cinematic-home .cinema-example-meta { display: flex; align-items: center; gap: 10px; color: #c7b7f0; font-size: 13px; margin-bottom: 11px; }
+.cinematic-home .cinema-example-media { width: 100%; border: 1px solid #5d536e; background: #090b10; }
+.cinematic-home .cinema-example-media video { aspect-ratio: 9 / 16; object-fit: contain; background: #090b10; }
+.cinematic-home .cinema-example-note { font-size: 14px; line-height: 1.8; margin-top: 25px; color: var(--muted); }
+.cinematic-home .cinema-menu { min-width: 44px; min-height: 44px; }
+
+/* Inactive steps remain visibly inactive without making their labels disappear. */
+.cinematic-home .journey-shell { --muted: #c3c9d4; }
+.cinematic-home :is(.journey-panel-heading p, .journey-role-list small, .journey-disclosure, .journey-video-caption, .journey-decision, .journey-prompt-label, .journey-own-idea, .journey-footer > a) { font-size: 14px; line-height: 1.7; }
+.cinematic-home .journey-role-list strong { font-size: 15px; line-height: 1.5; }
+.cinematic-home .journey-role-list button:disabled { opacity: 1; color: #c3c9d4; }
+.cinematic-home .journey-role-list button:disabled .journey-role-icon { opacity: .6; }
+.cinematic-home :is(.journey-demo-badge, .journey-toolbar > div > span:last-child, .journey-brief-tags > span) { font-size: 12px; }
+.cinematic-home .journey-panel-heading h3 { font-size: 26px; }
+.cinematic-home .journey-brief textarea { font-size: 16px; }
+.cinematic-home .journey-status { font-size: 14px; line-height: 1.7; }
+.cinematic-home .journey-footer > div { font-size: 14px; }
+
+/* Forms use an independent light palette with readable labels and helper text. */
+.auth-page .auth-form-wrap { max-width: 440px; }
+.auth-page .auth-form-wrap h1 { font-size: 34px; line-height: 1.3; }
+.auth-page .auth-subtitle { font-size: 15px; line-height: 1.75; color: #6c5d77; max-width: 400px; }
+.auth-page .auth-form > label { font-size: 14px; color: #4d405d; }
+.auth-page .auth-input { border-color: #cfc4d9; }
+.auth-page .auth-input input { font-size: 16px; min-height: 48px; color: #30243d; }
+.auth-page .auth-input input::placeholder { color: #7e708c; opacity: 1; }
+.auth-page .auth-input button { width: 40px; min-height: 40px; flex-shrink: 0; color: #6b557e; }
+.auth-page .password-hint { font-size: 12px; line-height: 1.6; color: #73647e; }
+.auth-page .password-hint.valid { color: #276c55; }
+.auth-page .auth-switch button { font-size: 14px; min-height: 44px; color: #73617f; }
+.auth-page .auth-switch button[aria-pressed=true] { color: #6c379c; }
+.auth-page .auth-form > .button { font-size: 15px; min-height: 50px; }
+.auth-page :is(.auth-alternate, .auth-trust p, .auth-pilot-note, .auth-form-footer) { font-size: 12px; line-height: 1.75; color: #73647e; }
+.auth-page .auth-alternate { font-size: 14px; }
+.auth-page .auth-alternate button { min-height: 32px; }
+.auth-page .auth-top button { font-size: 14px; min-height: 44px; color: #6c5d77; }
+.auth-page .auth-top > span { font-size: 10px; color: #73647e; }
+
+@media (max-width: 1100px) and (min-width: 601px) {
+  .cinematic-home .cinema-example-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 38px 28px; }
+  .cinematic-home .cinema-example-grid figcaption { min-height: 198px; }
+  .cinematic-home .cinema-example-grid h3 { font-size: 25px; }
+  .cinematic-home .cinema-nav nav { gap: 18px; font-size: 14px; }
+}
+
+@media (min-width: 1101px) and (max-width: 1279px) {
+  .cinematic-home .cinema-example-grid figcaption { min-height: 204px; }
+}
+
+@media (max-width: 600px) {
+  .cinematic-home .cinema-login { display: none; }
+  .cinematic-home .cinema-kicker,
+  .cinematic-home .cinema-hero .cinema-kicker { font-size: 11px; letter-spacing: 1.25px; }
+  .cinematic-home .cinema-hero-facts { font-size: 12px; gap: 12px; }
+  .cinematic-home .cinema-agent-list strong { font-size: 16px; }
+  .cinematic-home .cinema-agent-list small { font-size: 13px; }
+  .cinematic-home .cinema-agent-list button { padding: 15px 12px; }
+  .cinematic-home .cinema-agent-detail { padding: 26px 22px; }
+  .cinematic-home .cinema-example-grid { grid-template-columns: 1fr; gap: 28px; }
+  .cinematic-home .cinema-example-grid figure { display: flex; flex-direction: column; padding: 18px; }
+  .cinematic-home .cinema-example-grid figcaption { min-height: 0; padding: 0 0 18px; }
+  .cinematic-home .cinema-example-media { max-width: 360px; margin-inline: auto; }
+  .cinematic-home .cinema-example-grid h3 { font-size: 23px; line-height: 1.35; }
+  .cinematic-home .cinema-example-meta { font-size: 13px; gap: 8px; }
+  .cinematic-home .cinema-faq > div:last-child { padding: 16px 18px; }
+  .cinematic-home .cinema-faq summary { font-size: 17px; }
+  .cinematic-home .cinema-film-top { font-size: 11px; letter-spacing: 1px; }
+  .cinematic-home .journey-panel-heading h3 { font-size: 26px; }
+  .cinematic-home .journey-role-list strong { font-size: 15px; }
+  .cinematic-home .cinema-footer > small { font-size: 12px; }
+  .cinematic-home .cinema-final p { font-size: 14px; }
+}
+
+@media (max-width: 700px) {
+  .auth-page .auth-story { height: 200px; min-height: 200px; }
+  .auth-page .auth-story-copy { margin-top: 18px; }
+  .auth-page .auth-story-copy h2 { font-size: 28px; }
+  .auth-page .auth-form-side { min-height: calc(100dvh - 200px); }
+  .auth-page .auth-form-icon { display: none; }
+  .auth-page .auth-form-wrap { padding-top: 24px; }
+  .auth-page .auth-form-wrap h1 { font-size: 30px; }
+  .auth-page .auth-form-footer { flex-wrap: wrap; gap: 4px 12px; }
+}
