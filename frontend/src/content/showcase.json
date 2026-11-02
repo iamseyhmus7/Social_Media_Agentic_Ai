@@ -1,0 +1,42 @@
+[
+  {
+    "id": "brain-myth",
+    "title": "Beynimizin Sadece %10’unu mu Kullanıyoruz? Yaygın Yanlış İnanış",
+    "category": "Bilim",
+    "src": "/showcase/brain-myth.mp4",
+    "poster": "/showcase/brain-myth.jpg",
+    "duration": 45.8,
+    "width": 1080,
+    "height": 1920
+  },
+  {
+    "id": "great-wall-myth",
+    "title": "Çin Seddi Ay’dan Görünür mü? Efsaneyi 45 Saniyede Çürütüyoruz",
+    "category": "Merak",
+    "src": "/showcase/great-wall-myth.mp4",
+    "poster": "/showcase/great-wall-myth.jpg",
+    "duration": 46.8,
+    "width": 1080,
+    "height": 1920
+  },
+  {
+    "id": "napoleon",
+    "title": "Napolyon Kısa Değildi: İnçlerin Oyunu",
+    "category": "Tarih",
+    "src": "/showcase/napoleon.mp4",
+    "poster": "/showcase/napoleon.jpg",
+    "duration": 43.0,
+    "width": 1080,
+    "height": 1920
+  },
+  {
+    "id": "adana-bridge",
+    "title": "Adana’nın Taş Köprüsü: Seyhan Üzerindeki Zaman Yolculuğu",
+    "category": "Keşif",
+    "src": "/showcase/adana-bridge.mp4",
+    "poster": "/showcase/adana-bridge.jpg",
+    "duration": 45.9,
+    "width": 1080,
+    "height": 1920
+  }
+]
