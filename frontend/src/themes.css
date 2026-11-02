@@ -1,0 +1,110 @@
+.theme-toggle,.auth-top .theme-toggle{position:relative;isolation:isolate;display:grid;grid-template-columns:1fr 1fr;align-items:center;justify-items:center;flex-shrink:0;width:76px;min-width:76px;height:44px;min-height:44px;padding:4px;gap:0;border:1px solid #393939;border-radius:999px;background:#161616;color:#8b8b8b;cursor:pointer;transition:background .25s,border-color .25s}
+.theme-toggle-thumb{position:absolute;z-index:-1;left:4px;top:4px;width:32px;height:34px;border-radius:50%;background:#fff;box-shadow:0 2px 6px #0003;transform:translateX(34px);transition:transform .3s cubic-bezier(.22,1,.36,1),background .25s}
+.theme-toggle svg{transition:color .25s,transform .3s}
+.theme-toggle[data-mode=dark] .theme-toggle-moon{color:#111;transform:rotate(-12deg)}
+.theme-toggle[data-mode=light],.auth-top .theme-toggle[data-mode=light]{background:#efefef;border-color:#d5d5d5;color:#747474}
+.theme-toggle[data-mode=light] .theme-toggle-thumb{transform:translateX(0);background:#111}
+.theme-toggle[data-mode=light] .theme-toggle-sun{color:#fff;transform:rotate(45deg)}
+.theme-toggle:focus-visible{outline:3px solid #a98bff;outline-offset:4px}
+.cinematic-home .cinema-nav-actions>.theme-toggle{margin-left:2px}
+.cinematic-home{color-scheme:dark}
+html[data-theme=light] .cinematic-home{--bg:#ffffff;--surface:#fff;--text:#252030;--muted:#625a70;--accent:#7542d9;--line:#d9d2e2;color-scheme:light;background-color:var(--bg);background-image:none}
+html[data-theme=light] .cinematic-home .cinema-nav{background:#ffffff;border-color:var(--line)}
+html[data-theme=light] .cinematic-home .cinema-brand-stage{background:#111419}
+html[data-theme=light] .cinematic-home .cinema-brand-background{mask-image:none}
+html[data-theme=light] .cinematic-home .cinema-brand-stage::after{background:linear-gradient(transparent 65%,#111419bb)}
+html[data-theme=light] .cinematic-home .cinema-brand-actions .cinema-text-link{color:#f4f2ed}
+html[data-theme=light] .cinematic-home :is(.cinema-hero-copy,.cinema-heading>div,.landing-section-heading>div)::before{background:radial-gradient(ellipse at 38% 50%,#fffffff2 8%,#ffffffc7 48%,#ffffff00 76%)}
+html[data-theme=light] .cinematic-home :is(.cinema-kicker,.cinema-example-meta,.landing-eyebrow){color:#7041b3}
+html[data-theme=light] .cinematic-home :is(.cinema-hero-facts,.cinema-step-grid p){color:#5b5368}
+html[data-theme=light] .cinematic-home :is(.cinema-example-grid figure,.cinema-step-grid article,.cinema-agent-list,.cinema-agent-detail,.cinema-faq>div:last-child){background:#ffffffed;border-color:#d8cfe3}
+html[data-theme=light] .cinematic-home .cinema-example-media{border-color:#c6bad4}
+html[data-theme=light] .cinematic-home .cinema-agent-list button[aria-pressed=true]{background:#eee7fa;border-color:#9273bd}
+html[data-theme=light] .cinematic-home .cinema-mobile-task{background:#f0ebf7;border-color:#d8cfe3}
+html[data-theme=light] .cinematic-home .cinema-mobile-task small{color:#625a70}
+html[data-theme=light] .cinematic-home .cinema-hero-film{background:#1c2028;box-shadow:16px 20px 0 -1px #ffffff,16px 20px 0 0 #d9d2e2}
+html[data-theme=light] .cinematic-home .cinema-hero-film :is(strong,figcaption span,.cinema-film-top){color:#f4f2ed}
+html[data-theme=light] .cinematic-home .journey-shell{background:#fff;border-color:#d9d2e2;--muted:#625a70}
+html[data-theme=light] .cinematic-home :is(.journey-toolbar,.journey-brief,.journey-result,.journey-footer){background:#fff;border-color:#ded5e8}
+html[data-theme=light] .cinematic-home .journey-workflow{background:#f3eff9;border-color:#ded5e8}
+html[data-theme=light] .cinematic-home :is(.journey-topics>button,.journey-role-list button,.journey-role-icon,.journey-artifact,.journey-brief textarea,.journey-panel-heading>span,.journey-brief-tags>span){background:#faf8fd;border-color:#d8cee4;color:#352c43}
+html[data-theme=light] .cinematic-home :is(.journey-topics>button[aria-pressed=true],.journey-role-list .is-active button,.journey-role-list .is-inspected button){background:#eae0f8;border-color:#9066bd}
+html[data-theme=light] .cinematic-home .journey-role-list .is-done button{background:#e8f3eb;border-color:#9abda2}
+html[data-theme=light] .cinematic-home .journey-role-list button:disabled{color:#625a70}
+html[data-theme=light] .cinematic-home :is(.journey-start,.journey-approve,.cinema-button){color:#fff!important}
+html[data-theme=light] .cinematic-home .cinema-button:hover{background:#6330c1}
+html[data-theme=light] .cinematic-home :is(.journey-demo-badge,.journey-own-idea,.journey-toolbar>button,.journey-footer>a){color:#7041b3}
+html[data-theme=light] .cinematic-home .journey-preview-placeholder{background:#eeebf4}
+html[data-theme=light] .cinematic-home .journey-preview-placeholder:after{background:#ffffff70}
+html[data-theme=dark] .auth-page{color-scheme:dark;background:#000000;color:#f4f2ed}
+html[data-theme=dark] .auth-page .auth-form-side{background:#000000}
+html[data-theme=dark] .auth-page :is(.auth-subtitle,.auth-form>label,.password-hint,.auth-alternate,.auth-trust p,.auth-pilot-note,.auth-form-footer,.auth-top button){color:#c6c0d0}
+html[data-theme=dark] .auth-page .auth-input{background:#20242e;border-color:#555064}
+html[data-theme=dark] .auth-page .auth-input input{color:#f4f2ed}
+html[data-theme=dark] .auth-page .auth-input input::placeholder{color:#aaa2b7}
+html[data-theme=dark] .auth-page .auth-input button{color:#c6b2f4}
+html[data-theme=dark] .auth-page :is(.auth-switch,.auth-trust){border-color:#41394e}
+html[data-theme=dark] .auth-page .auth-switch button{color:#bfb7ce}
+html[data-theme=dark] .auth-page .auth-switch button[aria-pressed=true]{color:#c8afff;border-color:#a98bff}
+html[data-theme=dark] .auth-page .auth-alternate button{color:#c8afff}
+html[data-theme=dark] .auth-page .auth-form-icon{background:#24202f;border-color:#51405e;color:#c8afff}
+html[data-theme=dark] .auth-page .password-hint.valid{color:#8dd8b0}
+html[data-theme=light] .auth-page{color-scheme:light}
+@media(max-width:900px){html[data-theme=light] .cinematic-home .cinema-nav nav{background:#ffffff}}
+@media(max-width:600px){.cinematic-home .cinema-nav-actions{gap:6px}.auth-top .theme-toggle{min-height:44px}.auth-page .auth-top:after{display:none}}
+@media(max-width:360px){.cinematic-home .cinema-nav>.cinema-container{gap:5px}.cinematic-home .cinema-nav .cinema-logo{font-size:26px;gap:5px}.cinematic-home .cinema-nav-actions{gap:3px}.cinematic-home .cinema-menu{min-width:36px}}
+
+/* Black/white surfaces share the approved illustrated atmosphere. */
+html[data-theme=dark] .cinematic-home{--bg:#000;--surface:#101010;--text:#fff;--muted:#bdbdbd;--line:#303030;background-color:#000;background-image:linear-gradient(#0004,#0004),url('/images/sahne-page-atmosphere.webp')}
+html[data-theme=dark] .cinematic-home .cinema-nav{background:#000}
+html[data-theme=dark] .cinematic-home :is(.cinema-hero-copy,.cinema-heading>div,.landing-section-heading>div)::before{background:radial-gradient(ellipse at 42% 50%,#000b 5%,#0007 45%,#0000 74%)}
+html[data-theme=dark] .cinematic-home :is(.cinema-example-grid figure,.cinema-step-grid article,.cinema-agent-list,.cinema-agent-detail,.cinema-faq>div:last-child,.journey-shell){background:#101010;border-color:#303030}
+html[data-theme=dark] .cinematic-home :is(.journey-toolbar,.journey-brief,.journey-result,.journey-footer){background:#101010}
+html[data-theme=dark] .cinematic-home .journey-workflow{background:#080808}
+html[data-theme=dark] .cinematic-home .cinema-hero-film{box-shadow:16px 20px 0 -1px #000,16px 20px 0 0 #303030}
+html[data-theme=light] .cinematic-home{--text:#111;--muted:#555;--line:#ddd}
+html[data-theme=light] .auth-page,html[data-theme=light] .auth-page .auth-form-side{background:#fff}
+@media(max-width:600px){.cinematic-home .cinema-nav-actions{gap:6px}.cinematic-home .cinema-nav-actions>.theme-toggle{margin-left:0}.cinematic-home .cinema-nav>.cinema-container{gap:6px}.cinematic-home .cinema-nav .cinema-logo{font-size:26px;gap:4px}}
+@media(max-width:360px){.cinematic-home .cinema-nav .cinema-logo{font-size:24px}.cinematic-home .cinema-nav-actions{gap:3px}.cinematic-home .cinema-nav .cinema-logo>span{font-size:18px}.cinematic-home .cinema-nav .cinema-button.small{padding:7px 6px;gap:3px}.cinematic-home .cinema-menu{min-width:28px;padding:2px}}
+@media(prefers-reduced-motion:reduce){.theme-toggle,.theme-toggle *{transition:none!important}}
+
+/* Transform only the decorative layer, never artwork, text or video. */
+html[data-theme=light] .cinematic-home{position:relative;isolation:isolate;background:#fff}
+html[data-theme=light] .cinematic-home::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:url('/images/sahne-page-atmosphere.webp');background-size:max(100%,1440px) auto;background-position:center 470px;background-repeat:repeat-y;filter:invert(1) hue-rotate(180deg) saturate(.45);opacity:.72}
+html[data-theme=light] .cinematic-home .cinema-brand-background{mask-image:linear-gradient(#000 0%,#000 76%,transparent 100%)}
+@media(max-width:600px){html[data-theme=light] .cinematic-home::before{background-size:760px auto;background-position:42% 350px}}
+
+/* Theme-specific hero art with a continuous left-to-right creative signal. */
+.cinema-brand-day{display:none}
+html[data-theme=light] .cinema-brand-night{display:none}
+html[data-theme=light] .cinema-brand-day{display:block}
+html[data-theme=light] .cinematic-home .cinema-brand-stage{background:transparent}
+html[data-theme=light] .cinematic-home .cinema-brand-stage::after{background:linear-gradient(transparent 75%,#fff6)}
+html[data-theme=light] .cinematic-home .cinema-brand-actions .cinema-text-link{color:#27212f;text-shadow:0 1px 8px #fff}
+@media(max-width:600px){.cinematic-home .cinema-desktop-cta{display:none}.cinematic-home .cinema-mobile-cta{display:inline}.cinematic-home .cinema-nav .cinema-button.small{white-space:nowrap}}
+
+/* Construction sequence: pencil contours, brush-painted imagery, final artwork. */
+.cinema-brand-drawing{color:#ba95f8}
+html[data-theme=light] .cinema-brand-drawing{color:#8051cb}
+.hero-drawing-paper{opacity:.5;filter:blur(28px)}
+html[data-theme=light] .hero-drawing-paper{filter:invert(1) hue-rotate(180deg) saturate(.45) blur(28px);opacity:.65}
+.hero-brush-stroke{stroke-dasharray:1000;stroke-dashoffset:0}
+.hero-drawing-finished{opacity:1}
+.hero-drawing-connection{stroke-dasharray:1000;stroke-dashoffset:0}
+.cinematic-home[data-motion=on] .hero-brush-stroke{animation:sahne-brush-build var(--draw-duration) linear var(--draw-delay) both!important}
+.cinematic-home[data-motion=on] .hero-drawing-connection{animation:sahne-brush-build 2.8s cubic-bezier(.4,0,.2,1) .25s both!important}
+.cinematic-home[data-motion=on] .hero-drawing-finished{animation:sahne-art-finish .45s ease 4.05s both!important}
+@keyframes sahne-brush-build{from{stroke-dashoffset:1000}to{stroke-dashoffset:0}}
+@keyframes sahne-art-finish{from{opacity:0}to{opacity:1}}
+
+.hero-region-color{mix-blend-mode:screen}
+html[data-theme=light] .hero-region-color{mix-blend-mode:multiply}
+.hero-contour-draw{stroke-dasharray:1000;stroke-dashoffset:0}
+.hero-panel-linework{opacity:0}
+.cinematic-home[data-motion=on] .hero-contour-draw{animation:sahne-brush-build 1.25s ease-in-out 1.85s both!important}
+.cinematic-home[data-motion=on] .hero-panel-linework{animation:sahne-pencil-fade 2.4s linear 1.55s both!important}
+@keyframes sahne-pencil-fade{0%{opacity:0}8%,55%{opacity:.8}100%{opacity:0}}
+
+/* Draw only foreground ink: no rectangular raster backing around lettering/sketches. */
+.hero-region-cutout .cinema-brand-night{filter:url(#sahne-cutout-night)}
+.hero-region-cutout .cinema-brand-day{filter:url(#sahne-cutout-day)}
