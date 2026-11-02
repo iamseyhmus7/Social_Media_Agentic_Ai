@@ -1,0 +1,9 @@
+# Fast local source-only deployment on an already provisioned Sahne runtime.
+# Use the main backend/Dockerfile whenever dependency manifests change.
+ARG RUNTIME_IMAGE
+FROM ${RUNTIME_IMAGE}
+USER root
+COPY backend /app/backend
+COPY shared /app/shared
+COPY remotion/production/*.jsx remotion/production/*.mjs /app/remotion/production/
+USER sahne
