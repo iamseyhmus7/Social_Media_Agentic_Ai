@@ -1,0 +1,47 @@
+[
+  {
+    "Path": "backend/__pycache__",
+    "Files": 1,
+    "Bytes": 143.0
+  },
+  {
+    "Path": "backend/app/__pycache__",
+    "Files": 38,
+    "Bytes": 602402.0
+  },
+  {
+    "Path": "backend/kaggle/__pycache__",
+    "Files": 2,
+    "Bytes": 33841.0
+  },
+  {
+    "Path": "backend/migrations/__pycache__",
+    "Files": 1,
+    "Bytes": 1638.0
+  },
+  {
+    "Path": "backend/migrations/versions/__pycache__",
+    "Files": 3,
+    "Bytes": 3759.0
+  },
+  {
+    "Path": "backend/tests/__pycache__",
+    "Files": 24,
+    "Bytes": 677131.0
+  },
+  {
+    "Path": "scripts/__pycache__",
+    "Files": 2,
+    "Bytes": 13943.0
+  },
+  {
+    "Path": ".pytest_cache",
+    "Files": 5,
+    "Bytes": 11684.0
+  },
+  {
+    "Path": ".cache/webpack",
+    "Files": 2,
+    "Bytes": 164516471.0
+  }
+]
