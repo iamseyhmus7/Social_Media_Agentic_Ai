@@ -1,0 +1,84 @@
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sahne
+      POSTGRES_DB: sahne
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sahne"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  valkey:
+    restart: unless-stopped
+    image: valkey/valkey:8-alpine
+    command: ["valkey-server", "--appendonly", "yes"]
+    volumes: ["valkey-data:/data"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    build: {context: ., dockerfile: backend/Dockerfile, target: base, cache_from: ["sosyal_medya_agentic_ai-api:latest"]}
+    restart: unless-stopped
+    env_file: .env
+    environment: &backend-env
+      DATABASE_URL: postgresql+psycopg://sahne:${POSTGRES_PASSWORD}@postgres:5432/sahne
+      BROKER_URL: redis://valkey:6379/0
+      QUEUE_MODE: celery
+      APP_ORIGIN: http://localhost:8080
+      MEDIA_ROOT: /app/data/media
+      REMOTION_BUNDLE_CACHE: /app/remotion-code-cache
+      HF_HOME: /app/data/model-cache
+      FFMPEG_BIN: ffmpeg
+      FFPROBE_BIN: ffprobe
+      SUBTITLE_FONT: DejaVu Sans
+      SUBTITLE_FONT_FILE: /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+      YOUTUBE_REDIRECT_URI: http://localhost:8080/api/v1/youtube/callback
+    volumes: ["./data:/app/data"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+    command: ["sh", "-c", "alembic -c backend/alembic.ini upgrade head && exec uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --no-access-log"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+  worker:
+    init: true
+    shm_size: 1gb
+    build: {context: ., dockerfile: backend/Dockerfile, target: media, cache_from: ["sosyal_medya_agentic_ai-worker:latest"]}
+    restart: unless-stopped
+    env_file: .env
+    environment: *backend-env
+    volumes:
+      - "./data:/app/data"
+      - "remotion-code-cache:/app/remotion-code-cache"
+    depends_on:
+      api: {condition: service_healthy}
+    command: ["celery", "-A", "backend.app.celery_app:app", "worker", "--pool=solo", "--concurrency=1", "--loglevel=INFO"]
+  beat:
+    build: {context: ., dockerfile: backend/Dockerfile, target: base, cache_from: ["sosyal_medya_agentic_ai-api:latest"]}
+    restart: unless-stopped
+    env_file: .env
+    environment: *backend-env
+    volumes: ["./data:/app/data"]
+    depends_on:
+      api: {condition: service_healthy}
+    command: ["celery", "-A", "backend.app.celery_app:app", "beat", "--schedule=/app/data/celerybeat-schedule", "--loglevel=INFO"]
+  web:
+    restart: unless-stopped
+    build: {context: ., dockerfile: frontend/Dockerfile, cache_from: ["sosyal_medya_agentic_ai-web:latest"]}
+    ports: ["127.0.0.1:8080:80"]
+    depends_on:
+      api: {condition: service_healthy}
+volumes:
+  postgres-data:
+  valkey-data:
+  remotion-code-cache:
