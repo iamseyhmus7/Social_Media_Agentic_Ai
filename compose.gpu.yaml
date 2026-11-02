@@ -1,0 +1,13 @@
+# Optional WSL2 NVIDIA profile. Main compose works on CPU without this override.
+services:
+  worker:
+    build:
+      args:
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu124
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
