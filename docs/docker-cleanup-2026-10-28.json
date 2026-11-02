@@ -1,0 +1,167 @@
+[
+  {
+    "Reference": "sahne-agentic-v3-api:final",
+    "Id": "sha256:560a2500590b1341af9982b118d1de94870ec48b58bf259852ce54d428124af2",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-agentic-v3-api:qa",
+    "Id": "sha256:491d3585a18e0b5773b29f5e49b44437b6fb6c47171106af0e61d210e630490b",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-agentic-v3-worker:final",
+    "Id": "sha256:a11dc32dfc0bd5a7e3dde326b1ac0ab235c8bd00a354b8342254e9481eb05752",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-agentic-v3-worker:qa",
+    "Id": "sha256:76d2e27cea11f0bcf720b283472d6dcb85a8c0ea0cc2c954257a8c6d95e14b0e",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-before-video-speedup-api:local",
+    "Id": "sha256:560a2500590b1341af9982b118d1de94870ec48b58bf259852ce54d428124af2",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-before-video-speedup-worker:local",
+    "Id": "sha256:a11dc32dfc0bd5a7e3dde326b1ac0ab235c8bd00a354b8342254e9481eb05752",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-checkpoint-api:release",
+    "Id": "sha256:e8857b2a98efaf2a80607105bb1169a44a4301eddd4e1f7935514c1ccd897300",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-checkpoint-worker:release",
+    "Id": "sha256:38ac3a8da52e17f9d7dca56044e4e9f202e5f23e517cf33aafddc89819f0adbc",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-scenes-v3-api:release",
+    "Id": "sha256:534442329608504940f6860747eb3ab3a78331bdcf770d05c1f6e50c08f94da4",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-scenes-v3-worker:check",
+    "Id": "sha256:3c334694db3a234ede59d4282982682a3c0a4bd56150710b9c3be8de9fcc86b7",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-scenes-v3-worker:release",
+    "Id": "sha256:2dab4efb685079f4361f924b2fe1b320d4e36a9bd55b4a1a6473df0ffdf5ab59",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-streaming-editor-api:final",
+    "Id": "sha256:4a2a8e5e03673bc3eb3e68af93dabf3c5f599552379df3235bd83428b83b2a34",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-streaming-editor-api:release",
+    "Id": "sha256:ce00fbc3dfe8b0dfe1cdd86617b2153e7d6d0c5a5b66c1de6651ce4c34f300f1",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-streaming-editor-worker:final",
+    "Id": "sha256:c76d1f5bf3c42633437a84cbdd24096410e416b920d311d0310e3aa7824eaa3f",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-streaming-editor-worker:release",
+    "Id": "sha256:8f74f55f88a024ab9880a3ee185d1b7e9a2e473cc07bcffbff35a68270f3ce57",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-supervisor-mimo-api:release",
+    "Id": "sha256:80f170e73114ae46813e5811265c045901d4216128883c54879a2f09ebb7bf65",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-supervisor-mimo-worker:release",
+    "Id": "sha256:d7c6b519223b18560bba24825ccbcbd823038689d70befa707dee5472edab64e",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-supervisor-timeout-api:release",
+    "Id": "sha256:66b4cc3ceea427d554203ef0780735975810826972bc28681b9d6bafbd3c1ba6",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-supervisor-timeout-worker:release",
+    "Id": "sha256:ec3c906bb807f92efd7c11c696775a1b7c060c463ca0c18a58efc68e6dd084b8",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-supervisor-v2-api:release",
+    "Id": "sha256:5cfc6ed7a486c8ddfdcd4ec09a9cc0992dc85c3ac0c8c7696b863848dc6f5869",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-supervisor-v2-worker:release",
+    "Id": "sha256:4d4539d595f439998056f592c0de34ec226d82d0ceed98c11e09806b9673b9c8",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-supervisor-v3-api:release",
+    "Id": "sha256:c141d91f48b7a2f9c68719ce0930f0b204abc7e1f6dd8d7b4d306608a47b4c2a",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-supervisor-v3-worker:release",
+    "Id": "sha256:3412169cf73b17bd8d0cfe4892f726ba704152c96b03c8f7a40136cb743bb84d",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-video-speedup-api:final",
+    "Id": "sha256:963fd53c273fda5005a26ad5ad6e17067aa3d4608b35d659ea5c570a7e55e0c0",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-video-speedup-api:release",
+    "Id": "sha256:31f9ef3808a45ad60695678ff30fa997c49d6ce903c9a1a50e6da37b567ad3cb",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-video-speedup-worker:check",
+    "Id": "sha256:0663892e9fe70463c16c7244d145a9b7b098a22d522bf2eefcbcaf8156646f4c",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-video-speedup-worker:final",
+    "Id": "sha256:5f133e55f3d857f2ad006fe06feda84b4687b789f8cd87c33536a9177c4e8851",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sahne-video-speedup-worker:release",
+    "Id": "sha256:6203852d6aebd221048b477901545296e870832e5d01134a0fb25cec0dd6b384",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sosyal_medya_agentic_ai-api:before-agentic-v3",
+    "Id": "sha256:59e131adb76c7748af44f2dd5d246359d7286df1cd8dc5a8dd6581cf06092c2a",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sosyal_medya_agentic_ai-beat:before-agentic-v3",
+    "Id": "sha256:59e131adb76c7748af44f2dd5d246359d7286df1cd8dc5a8dd6581cf06092c2a",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sosyal_medya_agentic_ai-worker:before-agentic-v3",
+    "Id": "sha256:40752fc2a78db2c40ae0af7a7663df28486570e49b5fb3f738715c43bff8ad24",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "sosyal_medya_agentic_ai-web:before-agentic-v3",
+    "Id": "sha256:deb958cfe3b8f562b5435ecd485d53721935b1ab10e1485f69b9aee385eef686",
+    "Project": "sosyal_medya_agentic_ai"
+  },
+  {
+    "Reference": "untagged previous web build",
+    "Id": "sha256:0bd14373adb4699bf9c86a87e11e830b1e9a2fe373864c7ebfa623d78104423b",
+    "Project": "sosyal_medya_agentic_ai"
+  }
+]
