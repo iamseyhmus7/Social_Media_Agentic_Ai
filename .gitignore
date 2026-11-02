@@ -1,0 +1,23 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.cache/
+.playwright-mcp/
+*.pyc
+data/
+frontend/node_modules/
+frontend/dist/
+*.log
+.coverage
+remotion/production/node_modules/
+remotion/production/.cache/
+.pytest-*/
+
+# Local generated artifacts and credentials
+output/
+.env.*
+!.env.example
+**/node_modules/
+*.pem
+*.key
