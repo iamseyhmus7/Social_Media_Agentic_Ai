@@ -1,0 +1,11 @@
+import type {Project, Script} from './types';
+const demoImages=['/demo/cappadocia.png','/demo/chimneys.png','/demo/traveler.png'];
+export const demoScript:Script={hook:'Gökyüzüne başka bir açıdan bak.',cta:'Bu yolculuğu kaydet; bir sonraki durağı birlikte keşfedelim.',scenes:[
+  {title:'Gün doğumu',narration:'Kapadokya’da sabah, güneşin ilk ışıklarıyla başka bir hikâyeye dönüşür. Gökyüzünde süzülen balonlar, binlerce yıllık toprakların üzerinde sessizce ilerler.',visual_prompt:'Cinematic Cappadocia sunrise, colorful hot air balloons over fairy chimneys, warm natural light'},
+  {title:'Peribacaları',narration:'Rüzgârın ve zamanın şekillendirdiği peribacaları, her köşede farklı bir manzara sunar.',visual_prompt:'Cappadocia fairy chimneys at golden hour, cinematic warm tones'},
+  {title:'Yolculuk',narration:'Vadilerin arasında yürürken, geçmişin izlerini bugünün sessizliğinde bulursun.',visual_prompt:'Traveler overlooking Cappadocia valley, cinematic warm light'},
+  {title:'Vadiler',narration:'Her yükseliş, dünyaya biraz daha geniş bir pencereden bakma fırsatıdır.',visual_prompt:'Wide Cappadocia valley with balloons in morning sky'},
+  {title:'Yeni bir bakış',narration:'Bu yolculuğu kaydet; bir sonraki durağı birlikte keşfedelim.',visual_prompt:'Sun rising above Cappadocia horizon and hot air balloon silhouette'}
+]};
+export const demoProjects:Project[]=[{id:'demo-cappadocia',title:'Kapadokya: Gökyüzünün Masalı',topic:'Kapadokya hakkında 45 saniyelik bir video hazırla',audience:'Seyahat meraklıları',tone:'Sinematik',duration:45,revision:1,created:1792582020,run:{id:'demo-run',project_id:'demo-cappadocia',revision:1,status:'running',stage:'visual',approved:false,error:null,created:1792582020,publication:null,assets:[1,2,3].map(i=>({id:'demo-'+i,kind:'image',url:demoImages[i-1]})),outputs:{supervisor:{goal:'Konudan dikey seyahat videosu üret',checks:['Türkçe anlatım','Okunabilir altyazı']},strategy:{title:'Kapadokya: Gökyüzünün Masalı',angle:'Bir sabah yolculuğu',research:{current_data_available:false,notice:'Demo verisi; canlı araştırma yapılmadı.',sources:[]}},script:demoScript,voice:{duration:45,durations:[8,8,10,12,7]},demo_visual_count:3}}},
+{id:'demo-kas',title:'Kaş’ta Bir Gün',topic:'Kaş’ta bir gün',audience:'Seyahat meraklıları',tone:'Sakin',duration:38,revision:1,created:1792493400,run:null}];
