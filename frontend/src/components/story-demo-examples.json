@@ -1,0 +1,41 @@
+[
+  {
+    "id": "discovery",
+    "label": "Bir yeri keşfet",
+    "title": "Bir sabah, Kapadokya.",
+    "prompt": "Kapadokya’da gün doğumunu ilk kez gören biri için merak uyandıran bir kısa video hazırla.",
+    "strategy": "Keşif merakını ilk karede yakala. Gün doğumundan vadilere uzanan sıcak bir anlatım kur.",
+    "hook": "Bazı sabahlar, yalnızca güneş doğmaz.",
+    "scenes": [
+      {"image": "cappadocia", "caption": "Bazı sabahlar,\nyalnızca güneş doğmaz.", "narration": "Bazı sabahlar, yalnızca güneş doğmaz. Gökyüzü de yeni bir hikâyeye uyanır."},
+      {"image": "chimneys", "caption": "Her vadide\nbaşka bir hikâye.", "narration": "Işığın dokunduğu vadiler, her adımda başka bir manzarayı ortaya çıkarır."},
+      {"image": "traveler", "caption": "Bir sonraki yolculuğun\nnereden başlasın?", "narration": "Bazen keşfetmek için gereken tek şey, durup başka bir açıdan bakmaktır."}
+    ]
+  },
+  {
+    "id": "curiosity",
+    "label": "Merak uyandır",
+    "title": "Bir manzaranın izinde.",
+    "prompt": "Kapadokya’nın manzarasını merak duygusu üzerinden anlatan, üç sahnelik bir kısa video hazırla.",
+    "strategy": "Bir soruyla açılış yap. Kayaları, gökyüzünü ve insan bakışını aynı hikâyede birleştir.",
+    "hook": "Bir manzara, sana kaç soru sorabilir?",
+    "scenes": [
+      {"image": "chimneys", "caption": "Bir manzara,\nkaç soru sorabilir?", "narration": "Bir manzara, sana kaç soru sorabilir? Her çizgide keşfedilmeyi bekleyen bir ayrıntı var."},
+      {"image": "cappadocia", "caption": "Bakışını değiştir.\nAyrıntıyı keşfet.", "narration": "Başını kaldır. Aynı yerin başka bir yüzünü görmek için bazen bakışını değiştirmek yeter."},
+      {"image": "traveler", "caption": "Merak ettiğin\nyere doğru bir adım.", "narration": "Merak ettiğin yere doğru bir adım at. Kendi soruların, kendi hikâyene dönüşsün."}
+    ]
+  },
+  {
+    "id": "inspiration",
+    "label": "Bir hikâye anlat",
+    "title": "Yola çıkmak için.",
+    "prompt": "Yeni başlangıçlar ve yolculuk üzerine, sakin ve ilham veren bir kısa video hazırla.",
+    "strategy": "İçten bir açılış kullan. İzleyiciyi yolculuğun sonucuna değil, ilk adımın hissine davet et.",
+    "hook": "Bazen yolculuk, bir duraklamayla başlar.",
+    "scenes": [
+      {"image": "traveler", "caption": "Bazen yolculuk,\nbir duraklamayla başlar.", "narration": "Bazen yolculuk, bir duraklamayla başlar. Nereye gitmek istediğini duymak için yavaşla."},
+      {"image": "chimneys", "caption": "Acele etme.\nKendi yolunu bul.", "narration": "Her yolun aynı hızda yürünmesi gerekmez. Manzaraya bak, kendi ritmini bul."},
+      {"image": "cappadocia", "caption": "Yeni bir sabah.\nYeni bir başlangıç.", "narration": "Yeni bir sabah, yeni bir başlangıç. Bugün hikâyenin ilk cümlesi ne olsun?"}
+    ]
+  }
+]
