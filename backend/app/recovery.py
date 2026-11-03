@@ -97,10 +97,11 @@ def localize_findings(report, durations):
 def repair_voice(run_id):
     """Execute the supervisor's measured timing repair, preserving voice identity."""
     from pydantic import BaseModel, ConfigDict, Field
-    from .orchestration import state, voice_timing, invalidate, mutate, NeedsInput, decision_call
+    from .orchestration import state, voice_timing, invalidate, mutate, NeedsInput, decision_call, fit_voice_boundary
     from .providers import Evren
     from .config import settings
     from .media_providers import supports_voice_speed
+    fit_voice_boundary(run_id)
     run, _, _ = state(run_id)
     timing = voice_timing(run.outputs)
     if not timing['problem']:
@@ -158,7 +159,9 @@ def repair_voice(run_id):
                         scene['narration']=text
                     validate_engagement(candidate)
                 return self
+        from .script_editorial import SPOKEN_STANDARD
         patch = decision_call(run_id, Evren().generate, TimedPatch, 'Senaryo Yazarı / Süre düzeltme', {
+            'spoken_standard': SPOKEN_STANDARD,
             'script': original, 'measured_seconds': measured, 'scene_seconds': run.outputs['voice']['durations'],
             'required_words': target, 'target_seconds': aim, 'history': recovery['history'],
             'preserve_hook': bool(run.outputs.get('_config',{}).get('engagement_policy',0)),

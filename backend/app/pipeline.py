@@ -1,7 +1,9 @@
 import json
 import zipfile
 import hashlib
+import os
 from typing import TypedDict
+from pydantic import ValidationError
 from langgraph.graph import StateGraph, START, END
 from .db import DB, Run, Project, User, Event, Asset, now
 from . import media
@@ -20,10 +22,10 @@ class State(TypedDict):
     next_stage: str
 
 
-def checkpoint(run_id, stage, value):
+def checkpoint(run_id, stage, value, *, extra_outputs=None):
     with DB() as db:
         run = db.get(Run, run_id)
-        run.outputs = {**run.outputs, stage: value}
+        run.outputs = {**run.outputs, **(extra_outputs or {}), stage: value}
         if run.outputs.get('_provider_wait',{}).get('stage') == stage:
             from .recovery import initial
             recovery=initial(run.outputs)
@@ -63,11 +65,15 @@ def run_stage(run_id, stage, *, preview_only=False):
     if stage in run.outputs:
         # Cached stage outputs are durable checkpoints, not in-memory chat history.
         return
+    if run.outputs.get('_script_only') and stage not in ('supervisor', 'strategy', 'script'):
+        from .orchestration import NeedsInput
+        raise NeedsInput('Yalnız senaryo üretiminde medya aşamaları çalıştırılamaz.')
     with DB() as db:
         current = db.get(Run, run_id)
         current.stage, current.updated = stage, now()
         db.add(Event(run_id=run_id, stage=stage, message=LABELS[stage] + ' çalışıyor.'))
         db.commit()
+    accepted_plan_updates = {}
     brand = run.outputs.get('_brand', user.brand)
     context = {'topic': project.topic, 'audience': project.audience, 'tone': project.tone, 'duration_seconds': project.duration, 'brand': brand, 'creative_brief': run.outputs.get('supervisor'), 'feedback': run.outputs.get('_feedback'), 'completed': {k:v for k,v in run.outputs.items() if not k.startswith('_')}}
     if run.outputs.get('_config', {}).get('video_execution_policy') == 'planned_v1':
@@ -89,7 +95,31 @@ def run_stage(run_id, stage, *, preview_only=False):
     if stage == 'supervisor':
         value = llm.generate(Plan, 'Supervisor', context)
     elif stage == 'strategy':
-        sources = research(project.topic)
+        from .orchestration import mutate
+        from .script_editorial import AUTHORITY
+        sources = run.outputs.get('_strategy_research')
+        if sources is None:
+            sources = research(project.topic)
+            mutate(run_id, {'_strategy_research':sources})
+        if run.outputs.get('_config', {}).get('script_editorial_policy',0) >= 2:
+            from .providers import research_story
+            direction = (context.get('creative_brief') or {}).get('editorial_direction',{})
+            story_sources = run.outputs.get('_story_research')
+            if not settings().story_research_enabled:
+                from .script_editorial import MODEL_KNOWLEDGE
+                story_sources = {'sources':[], 'verification_scope':'model_knowledge_only', 'notice':'Dış kaynak araştırması yapılmadı; içerik LLM bilgisiyle hazırlanır.'}
+                mutate(run_id, {'_story_research':story_sources})
+                context['knowledge_policy'] = MODEL_KNOWLEDGE
+            if story_sources is None:
+                story_sources = research_story(direction.get('research_query','')) if direction.get('evidence_required') else {'sources':[], 'verification_scope':'fiction_or_nonfactual_content'}
+                if story_sources.get('sources') or not direction.get('evidence_required'):
+                    mutate(run_id, {'_story_research':story_sources})
+            if settings().story_research_enabled and direction.get('evidence_required') and not story_sources.get('sources'):
+                from .providers import ProviderError
+                raise ProviderError('Supervisor kaynaklı olgusal anlatım istedi; kaynak metni alınamadı. Kaynak erişimi sağlandıktan sonra yeniden dene. Medya üretimi başlamadı.')
+            sources = {**sources, 'evidence_sources':[{k:v for k,v in source.items() if k!='text'} for source in story_sources.get('sources',[])], 'verification_scope':story_sources.get('verification_scope')}
+            context.update(authority=AUTHORITY, story_research=story_sources,
+                instructions='Ortak planı uygula; plan değişikliğini tek başına yürürlüğe koyma. Ana merakı ve somut anlatı açısını geliştir. Açılışta sorulan soruya kapanışın gerçekten cevap verdiğini değerlendir; başka sorunun cevabını yerine koyma. Süreyi dağıtan yan konuyu büyütme. Eksik veya yanıltıcı varsayımı plan_revision_proposals içinde gerekçelendir; onayı supervisora bırak. Şüpheli ayrıntıyı daha kesin veya daha iddialı başlıkla büyütme. knowledge_policy uygula; başlığı kanıt sayma. Kapanışa yeni iddia veya slogan ekleme. Talimatları ve araştırma notlarını anlatıya taşıma.')
         value = {**llm.generate(Strategy, 'İçerik Stratejisti', {**context, 'research': sources}), 'research': sources}
         with DB() as db:
             db.get(Project, project.id).title = value['title']
@@ -103,7 +133,35 @@ def run_stage(run_id, stage, *, preview_only=False):
         if run.outputs.get('_config',{}).get('engagement_policy',0):
             script_schema = engaging_script(script_schema)
             context = {**context, 'mandatory_engagement': INSTRUCTION}
-        value = llm.generate(script_schema, 'Senaryo Yazarı', {**context, 'instructions': f'Türkçe konuşma için yaklaşık {round(min(59, max(31, project.duration)) * 2.2)} kelime hedefle. Görsel promptları İngilizce, tutarlı sinematik stilde ve yalnızca 9:16 dikey kadraj için yaz. Sahne başlıkları Türkçe olsun. ' + ('İçeriğe uygun format seç. 30 saniyede 5–6, 45–60 saniyede 7–8 kısa olay adımı oluştur. Hikâyede neden-sonuç, görünür karakter/nesne eylemleri ve anlamlı sonuç olsun. continuity içinde karakterin değişmeyen fiziksel görünüşünü/kıyafetini, mekânı, nesneleri ve görsel dili İngilizce tanımla. Her sahnenin action, state_before ve state_after alanlarını doldur. İlk anlatım doğrudan olayın içine girsin. Zorunlu hook yönergelerini uygula; son sahnede anlamlı kapanış yaz. Otomatik beğeni veya takip çağrısı ekleme.' if automatic else 'Hook ilk sahnenin anlatımında yer alsın. Son sahnede anlamlı kapanış yaz; otomatik beğeni veya takip çağrısı ekleme.')})
+        script_instructions = f'Türkçe konuşma için yaklaşık {round(min(59, max(31, project.duration)) * 2.2)} kelime hedefle. Görsel promptları İngilizce, tutarlı sinematik stilde ve yalnızca 9:16 dikey kadraj için yaz. Sahne başlıkları Türkçe olsun. ' + ('İçeriğe uygun format seç. 30 saniyede 5–6, 45–60 saniyede 7–8 kısa olay adımı oluştur. Hikâyede neden-sonuç, görünür karakter/nesne eylemleri ve anlamlı sonuç olsun. continuity içinde karakterin değişmeyen fiziksel görünüşünü/kıyafetini, mekânı, nesneleri ve görsel dili İngilizce tanımla. Her sahnenin action, state_before ve state_after alanlarını doldur. İlk anlatım doğrudan olayın içine girsin. Zorunlu hook yönergelerini uygula; son sahnede anlamlı kapanış yaz. Otomatik beğeni veya takip çağrısı ekleme.' if automatic else 'Hook ilk sahnenin anlatımında yer alsın. Son sahnede anlamlı kapanış yaz; otomatik beğeni veya takip çağrısı ekleme.')
+        policy = run.outputs.get('_config', {}).get('script_editorial_policy', 0)
+        if policy >= 2 and not run.outputs.get('_previous_script'):
+            from .script_editorial import generate_editorial_script_v2
+            from .orchestration import mutate
+            context['story_research'] = (run.outputs.get('_story_research', {}) if settings().story_research_enabled else {'sources':[], 'verification_scope':'model_knowledge_only'})
+            # scene_count belongs to supervisor; remove the old competing generic quota.
+            script_instructions = script_instructions.replace('30 saniyede 5–6, 45–60 saniyede 7–8 kısa olay adımı oluştur.', 'Supervisor editorial_direction.scene_count sayısını aynen uygula.')
+            value, audit = generate_editorial_script_v2(llm, script_schema, context, script_instructions,
+                progress=run.outputs.get('_script_editorial'),
+                save=lambda progress:mutate(run_id, {'_script_editorial':progress}))
+            actual_count = len(value['scenes'])
+            planned = context['creative_brief']['editorial_direction']
+            accepted_direction = {**planned, **audit.get('accepted_editorial_direction', {}), 'scene_count':actual_count}
+            changed_plan_fields = [key for key in accepted_direction if accepted_direction[key] != planned.get(key)]
+            if changed_plan_fields:
+                accepted_plan_updates = {
+                    'supervisor':{**context['creative_brief'], 'editorial_direction':accepted_direction},
+                    '_supervisor_plan_updates':[*run.outputs.get('_supervisor_plan_updates', []), *[{
+                        'field':key,'previous':planned.get(key),'accepted':accepted_direction[key],
+                        'reason':audit['reviews'][-1]['reason']} for key in changed_plan_fields]][-20:]}
+        elif policy and not run.outputs.get('_previous_script'):
+            from .script_editorial import generate_editorial_script
+            value, audit = generate_editorial_script(llm, script_schema, context, script_instructions)
+            from .orchestration import mutate
+            mutate(run_id, {'_script_editorial': audit})
+        else:
+            from .script_editorial import SPOKEN_STANDARD
+            value = llm.generate(script_schema, 'Senaryo Yazarı', {**context, 'spoken_standard': SPOKEN_STANDARD, 'instructions': script_instructions})
         previous, changed = run.outputs.get('_previous_script'), run.outputs.get('_changed_scenes', [])
         if previous and changed:
             if len(value['scenes']) != len(previous['scenes']):
@@ -264,7 +322,7 @@ def run_stage(run_id, stage, *, preview_only=False):
                 from .orchestration import mutate
                 mutate(run_id, {'_editor_preview': report}, 'Kurgu önizlemesi hazırlandı.', 'editor')
                 return
-        elif run.pipeline_version >= 2 and settings().video_provider == 'kaggle' and not run.outputs.get('_edit_only'):
+        elif run.pipeline_version >= 2 and settings().video_provider == 'kaggle' and not run.outputs.get('_edit_only') and not run.outputs.get('_script_only'):
             raise RuntimeError('Hareketli üretim için EDITOR_PROVIDER=remotion yapılandırılmalı.')
         else:
             report = media.render(folder, images, audios, durations, srt, check, music, brand)
@@ -308,7 +366,10 @@ def run_stage(run_id, stage, *, preview_only=False):
     else:
         raise RuntimeError('Bilinmeyen görev.')
     check()
-    checkpoint(run_id, stage, value)
+    if accepted_plan_updates:
+        checkpoint(run_id, stage, value, extra_outputs=accepted_plan_updates)
+    else:
+        checkpoint(run_id, stage, value)
 
 
 def build_graph(version=1):
@@ -427,11 +488,16 @@ def save_model_metric(run_id, metric):
 
 
 def execute(run_id):
+    diagnostic = None
     with DB() as db:
         run = db.get(Run, run_id)
         if not run or run.status != 'queued':
             return
         run.status, run.updated, run.error = 'running', now(), None
+        run.outputs = {**run.outputs, '_worker_runtime': {
+            'pid': os.getpid(), 'pipeline_code': hashlib.sha256(execute.__code__.co_code).hexdigest()[:16],
+            'validation_diagnostics': 'validation_failure' in execute.__code__.co_names,
+            'started': now()}}
         run.started = run.started or now()
         db.commit()
     try:
@@ -439,7 +505,7 @@ def execute(run_id):
         from .recovery import ensure, task_budget
         ensure(run_id)
         with use_run_settings(run.outputs.get('_config', {})), trace_calls(lambda metric: save_model_metric(run_id, metric), check_cancel=lambda: cancellation(run_id), budget=lambda key,op:task_budget(run_id,key,op)):
-            if run.pipeline_version >= 2 and settings().video_provider == 'kaggle' and not run.outputs.get('_edit_only'):
+            if run.pipeline_version >= 2 and settings().video_provider == 'kaggle' and not run.outputs.get('_edit_only') and not run.outputs.get('_script_only'):
                 from .kaggle_provider import configured
                 if not configured():
                     raise RuntimeError('Kaggle kimliği yapılandırılmadı. KAGGLE_USERNAME ve KAGGLE_API_TOKEN sunucuda gerekli.')
@@ -453,6 +519,12 @@ def execute(run_id):
         status, error = 'waiting_quota', str(exc)
     except (ImportError, ModuleNotFoundError) as exc:
         status, error = 'failed', 'Yerel medya bağımlılığı eksik: ' + (exc.name or 'bilinmiyor') + '. requirements-media.txt kurulmalı.'
+    except ValidationError as exc:
+        from .diagnostics import validation_failure, failure_message
+        with DB() as db:
+            failure_stage = db.get(Run, run_id).stage
+        diagnostic = validation_failure(exc, failure_stage)
+        status, error = 'failed', failure_message(diagnostic)
     except Exception as exc:
         # Credentials/provider bodies are never exposed as traceback or API errors.
         from .orchestration import NeedsInput
@@ -468,21 +540,33 @@ def execute(run_id):
                 recovery.update(active='provider',provider={'kind':'service_unavailable','action':'wait',**waiting})
                 current.outputs={**current.outputs,'_provider_wait':waiting,'_recovery':recovery}
                 db.commit()
+        elif isinstance(exc, NeedsInput) and run.outputs.get('_script_only'):
+            with DB() as db:
+                completed = db.get(Run, run_id)
+                script_ready = bool(completed.outputs.get('script'))
+            status = 'script_ready' if script_ready else 'waiting_input'
         elif isinstance(exc,InvalidModelOutput):
             status='waiting_input'
             from .recovery import update
             update(run_id,'model_output',{'kind':'invalid_output','action':'needs_input','status':'exhausted','remaining':0})
         else:
             status = 'waiting_input' if isinstance(exc, NeedsInput) else 'failed'
-        error = str(exc) if isinstance(exc, RuntimeError) else f'Üretim aracı başarısız ({type(exc).__name__}). Bağımlılıkları ve yapılandırmayı kontrol et.'
+        error = None if status == 'script_ready' else str(exc) if isinstance(exc, RuntimeError) else f'Üretim sırasında beklenmeyen hata ({type(exc).__name__}); tamamlanan aşamalar korundu.'
     with DB() as db:
         run = db.get(Run, run_id)
         run.status, run.error, run.updated = status, error, now()
+        if diagnostic:
+            from .diagnostics import log_failure
+            diagnostic['created'] = now()
+            run.outputs = {**run.outputs, '_diagnostics': [*run.outputs.get('_diagnostics', []), diagnostic][-20:]}
+            log_failure(run_id, diagnostic)
+        if status == 'script_ready':
+            run.stage = 'script'
         if status not in ('waiting_remote','waiting_provider'):
             run.active_owner = None
             run.finished = now()
         elif status=='waiting_provider':
             run.finished=None
-        db.add(Event(run_id=run_id, stage=run.stage, message=error or ('Kaggle işi takip ediliyor; sonuç hazır olduğunda üretim otomatik devam edecek.' if status == 'waiting_remote' else 'Video inceleme ve yayın onayı için hazır.')))
+        db.add(Event(run_id=run_id, stage=run.stage, message=error or ('Senaryo hazır; seçimin gereği ses ve görsel üretimi yapılmadı.' if status == 'script_ready' else 'Kaggle işi takip ediliyor; sonuç hazır olduğunda üretim otomatik devam edecek.' if status == 'waiting_remote' else 'Video inceleme ve yayın onayı için hazır.')))
         db.commit()
 

@@ -16,7 +16,7 @@ Bağlı model dosyaları, bellek eşlemesiyle oluşabilecek yavaş küçük okum
 
 `waiting_remote` durumunda worker kilidi bırakılır. Uzak iş kimliği, sürümü, girdi özeti ve denemeleri veritabanında saklanır; belirsiz gönderim otomatik yinelenmez. Hesap başına tek uzak iş çalışır. İptal edilen uzak iş sağlayıcıda sona erene kadar hesap yuvasını korur; geç gelen sonuçlar montaja alınmaz. Başarılı çekimler korunur ve eksik çekimler en fazla bir kez tekrar üretilir. Kota veya hata durumunda ücretli sağlayıcıya ya da sessiz fotoğraf montajına geçilmez.
 
-Gerçek anlatım hedef süreden ±2 saniye sapabilir ve 30–60 saniye içinde olmalıdır. Bir metin revizyonundan sonra hedef sağlanmazsa GPU işi başlamaz. Ses kesilmez veya hızlandırılmaz. Video Editörü yalnızca doğrulanan JSON kararları verir. Remotion görüntü, başlık ve altyazıları işler; FFmpeg orijinal hızdaki anlatımı ve isteğe bağlı müziği karıştırır. Son çıktı 1080×1920/30 FPS H.264/AAC olarak özel medya alanına yazılır ve tamamen çözümlenerek denetlenir.
+Gerçek anlatım hedef süreden ±2 saniye sapabilir ve 30–60 saniye içinde olmalıdır. Bir metin revizyonundan sonra hedef sağlanmazsa GPU işi başlamaz. Ses kesilmez veya hızlandırılmaz. Video Editörü yalnızca doğrulanan JSON kararları verir. Remotion görüntü, başlık ve altyazıları işler; FFmpeg orijinal hızdaki anlatımı ve isteğe bağlı müziği karıştırır. Yeni Remotion üretimlerinde çıktı varsayılan 1080×1920/60 FPS (REMOTION_OUTPUT_FPS=30 ile 30 FPS) H.264/AAC olarak özel medya alanına yazılır ve tamamen çözümlenerek denetlenir.
 
 Ana sayfadaki örnekler ve etkileşimli demo önceden hazırlanmıştır; gerçek Kaggle üretimi olarak sunulmaz. Gerçek üretim kayıtlı çalışma alanından başlatılır. Teknik kontrol içerik doğruluğu/estetik onayı değildir; son video kullanıcı incelemesini bekler.
 
@@ -289,3 +289,41 @@ Testler geçici veritabanı ve kullanıcılarla çalışır. Sağlayıcı/medya 
 Ücretli API, SaaS aboneliği veya ücretli UI paketi gerekmez. Elektrik, internet, disk ve donanım maliyetleri vardır; Evren'in kalıcı ücretsiz hizmet ve kota koşulları ayrıca doğrulanmalıdır. YouTube ve Evren dış servislerdir. Yazılımın açık kaynak olması ağırlıkların ve medya çıktılarının lisanslarını aynı yapmaz. Kaynaklar ve dağıtım notları: [LICENSES.md](LICENSES.md).
 
 Mimari: [docs/architecture.md](docs/architecture.md). Seçilen görsel hedef: [docs/design-reference.png](docs/design-reference.png).
+
+
+### Senaryo kalite akışı (editorial policy 2)
+
+Yeni üretimlerde supervisor, `editorial_direction` içinde ana soru, önem, neden-sonuç odağı,
+sonuç hedefi, kapanış biçimi, sahne sayısı ve kaynak gereksinimini belirler. Uzmanların genel
+sahne önerileri supervisor planına dayanır; uzman farklı bir sayı önerirse kabulünü supervisor değerlendirir. Önceki üretimlerin kaydedilmiş ayarları korunur.
+
+Yazar yalnız anlatım paragraflarını üretir. Supervisor editörü metni yeniden yazmadan altı
+ölçütle değerlendirir ve açık `approve/revise/cancel` kararı verir. Küçük üslup ve ifade farkları
+onayı engellemez; büyük/kritik sapma bildirildiğinde onay verilemez. Alıntı kopyalamak zorunlu
+değildir; paragraf indeksleri kod tarafından gerçek anlatım metnine bağlanır. Bir düzeltme turundan
+sonra da reddedilirse süreç durur. Supervisor farklı sahne sayısını kabul ederse ortak plan da kabul edilen sayıya güncellenir.
+Görsel aşama yalnız görsel alanları döndürür; kabul edilmiş
+anlatım kodla birleştirilir. Taslaklar, kararlar ve görsel metadata ayrı kontrol noktalarıdır;
+servis kesintisinden sonra tamamlanmış çağrılar tekrarlanmaz. Plan/bağlam değişirse kayıt geçersizleşir.
+
+Dış kaynak araştırması varsayılan olarak kapalıdır (`STORY_RESEARCH_ENABLED=false`).
+Bu modda yazar ve editör LLM bilgisiyle çalışır; dış doğrulama yapıldığı iddia edilmez,
+kaynak yokluğu tek başına üretimi durdurmaz ve kaynak/alıntı üretilmez.
+İsteğe bağlı kaynak modunu açmak için `STORY_RESEARCH_ENABLED=true` ve
+`STORY_RESEARCH_USER_AGENT` yapılandırılmalıdır:
+açıklayıcı bot adı/sürümü ve işletmecinin paylaşılabilir gerçek iletişim URL'si veya adresi.
+İstemci kimliği yalnız Wikimedia HTTPS API isteklerinde kullanılır. Hesap e-postası otomatik
+kullanılmaz. Kaynak metni alınamazsa süreç kaynak doğrulanmış gibi ilerlemez. Araştırma,
+Wikipedia makale metnini getirir; bu bağımsız tarihsel doğrulama değildir. Kaynak kimliği ve
+alıntının gerçekten metinde bulunması kodla, iddiayla anlam uyumu editör modeliyle kontrol edilir.
+
+Arayüzdeki **Yalnız senaryoyu hazırla** seçeneği API'ye `script_only: true` gönderir.
+Tamamlanınca `script_ready` durumuna geçilir; ses, görsel, video ve yayın aşamaları çalıştırılmaz.
+
+Editoryal akışta anlatım onayından sonra görsel yönergeler de supervisor LLM tarafından
+incelenir. Miktar, ölçek, eylem ve zaman çelişkilerinde yalnız hedef sahnelerin görsel
+alanları bir kez düzeltilir ve tekrar incelenir; onaylı anlatım korunur. Bu, medya
+üretiminden önceki senaryo denetimidir. Görsel üretimi veya render sonrası model
+incelemesi değildir. Her sonuç kontrol noktasına kaydedilir. `cta` alanı ayrı slogan
+üretmez; onaylı son sahnenin anlatımını yansıtır. Dış kaynak modu kapalıyken bu inceleme
+LLM bilgisine dayanan tutarlılık kontrolüdür; dış doğrulama yapıldığı iddia edilmez.

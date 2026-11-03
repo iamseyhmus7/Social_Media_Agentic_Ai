@@ -17,7 +17,7 @@ from .config import settings, snapshot_settings
 from .agents import AGENTS
 from .db import DB, get_db, init_db, User, Session, Project, Run, RemoteJob, Asset, Event, Approval, Publication, YouTubeConnection, WorkerLease, now
 from .security import current_user, admin, digest, hasher, verify_password
-from .schemas import Login, Registration, NewUser, NewProject, Revision, Reedit, Approve, Publish, Brand, FeedbackRequest, FeedbackAnswer, DeleteProjects
+from .schemas import Login, Registration, NewUser, NewProject, RunOptions, Revision, Reedit, Approve, Publish, Brand, FeedbackRequest, FeedbackAnswer, DeleteProjects
 from .storage import media_path, register, check_disk
 from . import youtube
 from .worker import dispatch
@@ -61,12 +61,38 @@ def owned_run(db, run_id, user, *, lock=False):
     return run
 
 
+def retryable_model_review(run):
+    return (run.status == 'waiting_input' and run.stage == 'script'
+        and (run.outputs.get('_recovery', {}).get('active') == 'model_output'
+            or run.outputs.get('_script_editorial', {}).get('phase') == 'visual_revision_pending')
+        and bool(run.outputs.get('_script_editorial', {}).get('draft')))
+
+
+def continuable_script(run):
+    return (run.status == 'script_ready' and bool(run.outputs.get('_script_only'))
+        and bool(run.outputs.get('script', {}).get('scenes')))
+
+
 def run_data(db, run):
     if not run:
         return None
     result = {key: getattr(run, key) for key in ['id', 'project_id', 'revision', 'status', 'stage', 'outputs', 'error', 'created', 'updated', 'started', 'finished', 'cancel_requested']}
     result['approved'] = youtube.valid_approval(db, run)
     result['pipeline_version'] = run.pipeline_version
+    result['can_retry'] = retryable_model_review(run)
+    result['can_continue'] = continuable_script(run) and run.revision == db.get(Project, run.project_id).revision
+    editorial = run.outputs.get('_script_editorial', {})
+    labels = {'writing':'Senaryo yazılıyor', 'text_repair':'Senaryo metni düzeltiliyor',
+        'text_review':'Supervisor senaryo metnini inceliyor', 'visual_allocation':'Görsel plan hazırlanıyor',
+        'visual_repair':'Görsel plan düzeltiliyor', 'visual_review':'Supervisor görsel planı inceliyor',
+        'visual_revision_pending':'Metin hazır · Görsel plan düzeltme bekliyor', 'ready':'Senaryo ve görsel plan hazır'}
+    phase = editorial.get('phase')
+    if not phase and editorial.get('approved') and not editorial.get('visuals_approved'):
+        phase = 'visual_revision_pending' if run.status == 'failed' else 'visual_review' if editorial.get('visuals') else 'visual_allocation'
+    result['script_progress'] = {'phase':phase, 'label':labels.get(phase, 'Senaryo hazırlanıyor'),
+        'text_approved':bool(editorial.get('approved')), 'visuals_approved':bool(editorial.get('visuals_approved')),
+        'approved_text':editorial.get('draft') if editorial.get('approved') else None,
+        'review_reason':(editorial.get('visual_reviews') or [{}])[-1].get('reason')}
     result['editor_progress'] = run.outputs.get('_editor_progress',{})
     result['provider_wait'] = run.outputs.get('_provider_wait',{})
     from .recovery import initial
@@ -266,7 +292,7 @@ def get_project(project_id: str, user=Depends(current_user), db: DBSession = Dep
 
 
 @app.post('/api/v1/projects/{project_id}/runs', status_code=202)
-def start_run(project_id: str, user=Depends(current_user), db: DBSession = Depends(get_db)):
+def start_run(project_id: str, data: RunOptions | None = None, user=Depends(current_user), db: DBSession = Depends(get_db)):
     project = owned_project(db, project_id, user)
     existing = db.scalar(select(Run).where(Run.project_id == project_id, Run.revision == project.revision).order_by(Run.created.desc()))
     if existing:
@@ -275,7 +301,7 @@ def start_run(project_id: str, user=Depends(current_user), db: DBSession = Depen
     if db.scalar(select(Feedback.id).where(Feedback.user_id==user.id, Feedback.status.in_(['queued', 'waiting_quota']))):
         raise HTTPException(409, 'Önce geri bildirim değerlendirmesi tamamlanmalı.')
     run = Run(id=str(uuid4()), project_id=project.id, user_id=user.id, active_owner=user.id,
-        revision=project.revision, pipeline_version=3, outputs={'_config': snapshot_settings(),
+        revision=project.revision, pipeline_version=3, outputs={'_script_only': bool(data and data.script_only), '_config': snapshot_settings(),
         '_brand': {k:v for k,v in user.brand.items() if k!='voice'}, '_edit_style': 'auto',
         '_requested_duration': None if project.duration_auto else project.duration,
         '_recovery': {'version':1,'voice':{'text_used':0,'speed_used':0,'history':[]}}})
@@ -355,11 +381,34 @@ def cancel_run(run_id: str, user=Depends(current_user), db: DBSession = Depends(
     return run_data(db, run)
 
 
+@app.post('/api/v1/runs/{run_id}/continue', status_code=202)
+def continue_run(run_id: str, user=Depends(current_user), db: DBSession = Depends(get_db)):
+    run = owned_run(db, run_id, user, lock=True)
+    project = db.get(Project, run.project_id)
+    if not continuable_script(run) or run.revision != project.revision:
+        raise HTTPException(409, 'Yalnızca güncel sürümde senaryosu tamamlanmış üretim kaldığı yerden sürdürülebilir.')
+    # Keep the existing run, approved script, plan and provider configuration.
+    # Removing this explicit stop lets the supervisor select the next eligible stage.
+    run.outputs = {**run.outputs, '_script_only':False}
+    run.status, run.error, run.cancel_requested, run.active_owner = 'queued', None, False, user.id
+    run.finished, run.updated = None, now()
+    db.add(Event(run_id=run.id, stage='script',
+        message='Senaryo testi tamamlandı; mevcut plan ve senaryo korunarak ses ve medya üretimine devam istendi.'))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, 'Başka bir üretimin zaten aktif.') from None
+    dispatch()
+    return run_data(db, run)
+
+
 @app.post('/api/v1/runs/{run_id}/retry', status_code=202)
 def retry_run(run_id: str, user=Depends(current_user), db: DBSession = Depends(get_db)):
     run = owned_run(db, run_id, user, lock=True)
     project = db.get(Project, run.project_id)
-    if run.status not in ('failed', 'waiting_quota', 'cancelled', 'waiting_provider') or run.revision != project.revision:
+    review_retry = retryable_model_review(run)
+    if (run.status not in ('failed', 'waiting_quota', 'cancelled', 'waiting_provider') and not review_retry) or run.revision != project.revision:
         raise HTTPException(409, 'Yalnızca güncel sürümde durdurulmuş veya başarısız üretim yeniden denenebilir.')
     if run.status == 'cancelled' and run.pipeline_version >= 2:
         if db.scalar(select(RemoteJob.id).where(RemoteJob.run_id == run.id, RemoteJob.account_slot.is_not(None))):
@@ -375,6 +424,19 @@ def retry_run(run_id: str, user=Depends(current_user), db: DBSession = Depends(g
             # upstream stages remain durable. Never swap an active GPU job.
             run.outputs = {**run.outputs, '_motion_engine': ENGINE_REVISION}
             db.add(Event(run_id=run.id, stage='motion', message='Düzeltilmiş video üretim motoruyla yeniden deneme istendi. Hazır ses ve görseller korunuyor.'))
+    editorial = run.outputs.get('_script_editorial', {})
+    if run.stage == 'script' and editorial.get('approved') and not editorial.get('visuals_approved'):
+        previous = (editorial.get('visual_reviews') or [{}])[-1]
+        if previous.get('decision') == 'revise':
+            # Only an explicit user retry opens another bounded review window.
+            # Provider retries retain the current window and repair checkpoint.
+            editorial = {**editorial, 'visual_review_window_start':len(editorial.get('visual_reviews', [])),
+                'phase':'visual_repair' if not editorial.get('visual_repair_done') else 'visual_review'}
+            run.outputs = {**run.outputs, '_script_editorial':editorial}
+    if review_retry and run.outputs.get('_recovery', {}).get('active') == 'model_output':
+        recovery = {**run.outputs.get('_recovery', {}), 'active':None,
+            'model_output':{'kind':'invalid_output','status':'repairing','action':'retry_review'}}
+        run.outputs = {**run.outputs, '_recovery':recovery}
     run.status, run.error, run.cancel_requested, run.active_owner = 'queued', None, False, user.id
     if '_provider_wait' in run.outputs:
         # Only an explicit user retry starts a new outage tracking window.

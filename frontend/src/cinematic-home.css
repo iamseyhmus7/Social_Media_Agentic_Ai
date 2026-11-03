@@ -16,3 +16,5 @@
 .cinema-mobile-cta{display:none}@media(max-width:360px){.cinema-desktop-cta{display:none}.cinema-mobile-cta{display:inline}.cinema-nav .cinema-button.small{white-space:nowrap}}
 @media(prefers-reduced-motion:reduce){.landing-page.cinematic-home[data-motion=on] .journey-spin,.landing-page.cinematic-home[data-motion=on] .journey-role-list>li.is-active:after{animation:none!important}}
 @media(prefers-reduced-motion:reduce){html:has(.cinematic-home){scroll-behavior:auto!important}}html:has(.cinematic-home[data-motion=off]){scroll-behavior:auto!important}
+
+.remote-status.script-status{display:block}.script-status details{margin:12px 0}.script-status .text-button{margin-top:12px}

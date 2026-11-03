@@ -54,10 +54,15 @@ class Plan(Strict):
     checks: list[str] = Field(min_length=1, max_length=8)
 
 
+class RunOptions(Strict):
+    script_only: bool = False
+
+
 class Strategy(Strict):
     title: str = Field(min_length=3, max_length=200)
     angle: str = Field(min_length=5, max_length=1200)
     audience: str = Field(min_length=2, max_length=300)
+    plan_revision_proposals: list[str] = Field(default_factory=list, max_length=6)
 
 
 class Scene(Strict):
@@ -69,7 +74,7 @@ class Scene(Strict):
 class Script(Strict):
     hook: str = Field(min_length=3, max_length=300)
     scenes: list[Scene] = Field(min_length=3, max_length=8)
-    cta: str = Field(min_length=3, max_length=300)
+    cta: str = Field(min_length=3, max_length=800, description='Onaylı kapanışı yansıt; ayrı slogan veya seslendirilecek ek metin üretme.')
 
 
 class StoryScene(Scene):

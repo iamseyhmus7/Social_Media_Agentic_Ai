@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     supervisor_timeout_seconds: int = Field(default=180, ge=15, le=600)
     kaggle_motion_profile: str = 'dual_required'
     engagement_policy: int = 1
+    script_editorial_policy: int = 2
     video_edit_policy: str = 'scenes_v3'
     editor_parallelism: int = Field(default=3, ge=1, le=4)
     # Zero disables only the editor's response/read deadline.
@@ -83,6 +84,8 @@ class Settings(BaseSettings):
     youtube_redirect_uri: str = 'http://127.0.0.1:5173/api/v1/youtube/callback'
     youtube_api_key: str = Field(default='', repr=False)
     rss_feeds: str = ''
+    story_research_enabled: bool = False
+    story_research_user_agent: str = ''
     max_disk_gb: float = 20
     session_hours: int = 24
 
@@ -109,6 +112,8 @@ def snapshot_settings():
     result['remotion_output_fps'] = c.remotion_output_fps
     result['video_review_policy'] = c.video_review_policy
     result['engagement_policy'] = c.engagement_policy
+    result['script_editorial_policy'] = c.script_editorial_policy
+    result['story_research_enabled'] = c.story_research_enabled
     result['elevenlabs_turkish_only'] = c.elevenlabs_turkish_only
     result['evren_media_model2'] = c.evren_media_model2
     result['evren_supervisor_model'] = c.evren_supervisor_model or c.evren_model
@@ -126,6 +131,8 @@ def use_run_settings(snapshot):
     values.setdefault('evren_supervisor_model', values.get('evren_model', _base_settings().evren_model))
     values.setdefault('kaggle_motion_profile', 'legacy_fp32')
     values.setdefault('engagement_policy', 0)
+    values.setdefault('script_editorial_policy', 0)
+    values.setdefault('story_research_enabled', False)
     values.setdefault('elevenlabs_turkish_only', False)
     values.setdefault('evren_media_model2', '')
     values.setdefault('video_edit_policy', 'weighted_v2')

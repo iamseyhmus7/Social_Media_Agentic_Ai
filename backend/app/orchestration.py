@@ -151,12 +151,42 @@ def initial_brief(run_id):
     schema = CreativeBrief if delegated else ProductionBrief if optimized(run) else CreativeBrief
     llm = Evren(timeout=settings().supervisor_timeout_seconds) if delegated else Evren()
     instruction = ('Genel amaçlı video yönetmenisin. Konuya uygun hedef kitle, ton, görsel dil ve '
-        '30/45/60 saniyelik süre seç. Konu reklam, öykü, eğitim, eğlence veya başka bir tür olabilir. '
+        '30/45/60 saniyelik süre seç. Anlatı türünü kullanıcı isteğinden ve konudan seç. '
         'İstenen desteklenen süreyi koru; desteklenmeyen açık süre talebinde clarification ile soru sor. '
         'Yalnızca konu başlığı verilmesi soru sorma nedeni değildir. Kullanıcı belirtmedikçe estetik, '
         'altın renk, belgesel formatı, CTA veya sabit açılış dayatma. Kurgu yönünü mevcut '
         'editing_capabilities ile uygulanabilir tasarla; unavailable efektleri vaat etme.')
+    from .script_editorial import SPOKEN_STANDARD
+    instruction += ' Anlatım kalite standardı: ' + SPOKEN_STANDARD
     production_context = {}
+    if run.outputs.get('_config', {}).get('script_editorial_policy', 0) >= 2:
+        from .script_editorial import EditorialProductionBrief, EditorialCreativeBrief, AUTHORITY
+        schema = EditorialProductionBrief if schema is ProductionBrief else EditorialCreativeBrief
+        instruction += (' ' + AUTHORITY + ' editorial_direction içinde izleyici sorusunu, önemini, neden-sonuç odağını ve kapanış karşılığını belirle. '
+            'critical_questions alanında bu konuya özgü soruları seç; core/supporting önceliğini ve '
+            'answer_requirements ile anlaşılması gereken bağlantıyı yaz. Bunları kullanıcıya soru olarak yöneltme. '
+            'story_question ile payoff aynı sorunun iki ucu olsun. Bir şeyin nasıl gerçekleştiği, neden gerçekleştiği '
+            've sonradan nasıl değiştirildiği farklı sorularsa cevaplarını birbirinin yerine koyma. '
+            'Önce ana soruya verilebilecek somut cevabı belirle; bu cevabı taşımayan merak vaadi kurma. '
+            'Açılış, kapanış, causal_focus ve critical_questions alanlarını bu tek ana hatta göre tutarlı yaz. '
+            'attention_allocation ile ana açıklamaya alan ayır. Toplam süreye sığmayan yan konuyu çıkar '
+            'veya supporting düzeyine indir. Açılış vaadini ikinci bir konu ekleyerek dağıtma. '
+            'Sahne sayısını açıklamanın ihtiyacına göre seç; eşit saniye veya kelime dağıtma. '
+            'Emin olmadığın neden veya niyeti kesin öncül yapma. Çok etkenli sonucu tek etkene indirgeme. '
+            'opening_direction içinde görünür eylemi, kısa ekran yazısını ve anlatıcı/ses vurgusunu birlikte planla. '
+            'concrete_anchor için konuya uygun örnek seç; olguyu, yorumu ve temsili karşılaştırmayı ayır. '
+            'pacing_direction içinde bilgi ve görüntü ilerleyişini tarif et. Gereksiz önsözü ve tekrarları çıkar. '
+            'closing_direction ile son bilgiyi, görüntüyü ve ses bitişini belirle. Aynı kapanışın farklı, '
+            'daha iddialı sloganlarını üretme. Görsellerde miktar, ölçek ve zaman ilişkilerini koru. '
+            'Görsel planı hedef sahne sayısına göre kur; uzmanların gerekçeli değişikliğini değerlendir. '
+            'checks alanını henüz yapılmamış kabul kontrolleri olarak yaz; ölçülmemiş ses/görüntü uyumunu '
+            'doğrulanmış gibi sunma. Olgusal sınırları içerikte koru; bu denetim talimatlarını seslendirme. ')
+        if settings().story_research_enabled:
+            instruction += ('Tarihsel/bilimsel iddiada evidence_required=true, saf kurguda false seç. '
+                'research_query için özel bilgi içermeyen kısa İngilizce konu sorgusu yaz. ')
+    if run.outputs.get('_config', {}).get('script_editorial_policy', 0) >= 2 and not settings().story_research_enabled:
+        from .script_editorial import MODEL_KNOWLEDGE
+        instruction += ' ' + MODEL_KNOWLEDGE + ' evidence_required=false seç, research_query boş yaz; dış araştırma görevi planlama.'
     if run.outputs.get('_config',{}).get('engagement_policy',0):
         from .engagement import INSTRUCTION
         instruction += ' Zorunlu üretim kuralı: ' + INSTRUCTION
@@ -165,8 +195,7 @@ def initial_brief(run_id):
             'model':settings().elevenlabs_model if settings().tts_provider=='elevenlabs' else None,
             'voice_selection':'Seslendirme agentı doğrulanmış sağlayıcı seslerinden seçer.'}}
         instruction += (' Ses sağlayıcısı audio_backend ile belirlenmiştir; başka sağlayıcıya ait ses kimliği şart koşma. '
-            'checks alanı yapılacak kabul ölçütleridir; henüz yapılmamış denetimi yapılmış gibi yazma. '
-            'Sayısal veya tarihsel iddialar için uzmanlardan kaynak doğrulaması iste; doğrulanmış kaynak veya kontrol sonucu uydurma.')
+            'Sağlanan bilgi moduna göre tutarlılığı denetle; yapılmamış kontrol sonucunu uydurma.')
     brief = schema.model_validate(decision_call(run_id, llm.generate, schema, 'İçerik Stratejisti / Üretim özeti' if delegated else 'Supervisor', {
         'required_task_dependencies': DEPENDENCIES,
         'topic': project.topic, 'brand': run.outputs.get('_brand', {}),
@@ -221,19 +250,51 @@ def voice_timing(outputs):
 
 
 def fit_voice_boundary(run_id):
-    """Keep speech and checkpoints; fit only a sub-50 ms short PCM tail."""
+    """Fit small PCM boundary differences before asking the model to rewrite speech."""
     from .pipeline import asset_path, cancellation
     from . import media
     from .storage import register
     run, _, _ = state(run_id)
     timing = voice_timing(run.outputs)
-    if timing['problem'] != 'too_short' or any(k in run.outputs for k in ('visual','motion','editor')):
+    if any(k in run.outputs for k in ('visual','motion','editor')):
+        return
+    voice = run.outputs.get('voice', {})
+    if not voice.get('audios') or len(voice['audios']) != len(voice.get('durations', [])):
+        return
+    if timing['problem'] == 'too_long':
+        excess = timing['measured_seconds'] - timing['accepted_max_seconds']
+        # Half a second is an editorial fit, not a new creative draft. Keep a
+        # small encoding margin and never stretch speech by more than 1%.
+        speed = timing['measured_seconds'] / (timing['accepted_max_seconds'] - .02)
+        if not 0 < excess <= .500001 or speed > 1.01 or voice.get('boundary_speed_adjustment'):
+            return
+        audios, durations = [], []
+        for index, ident in enumerate(voice['audios']):
+            cancellation(run_id)
+            source = asset_path(ident)
+            target = source.with_name(source.stem + '-boundary-fit.wav')
+            duration = media.fit_audio_speed(source, target, speed, lambda:cancellation(run_id))
+            with DB() as db:
+                audios.append(register(db, db.get(Run, run_id), target, 'audio'))
+            durations.append(duration)
+        total = round(sum(durations), 9)
+        if not timing['accepted_min_seconds'] <= total <= timing['accepted_max_seconds']:
+            return  # Preserve the original checkpoint if the measured fit failed.
+        with DB() as db:
+            current = db.get(Run, run_id)
+            current.outputs = {**current.outputs, 'voice':{**voice, 'audios':audios,
+                'durations':durations, 'duration':total, 'boundary_speed_adjustment':{
+                    'speed':speed, 'original_audios':voice['audios'],
+                    'original_durations':voice['durations'], 'original_duration':voice['duration']}}}
+            db.add(Event(run_id=run_id, stage='voice', message=
+                f'Küçük süre aşımı yerel kurgu ayarıyla giderildi: {voice["duration"]:.2f} → {total:.2f} sn; '
+                f'ses hızı %{(speed-1)*100:.2f} artırıldı, metin ve özgün kayıtlar korundu; yeni ses API isteği yapılmadı.'))
+            db.commit()
+        return
+    if timing['problem'] != 'too_short':
         return
     gap = timing['accepted_min_seconds'] - timing['measured_seconds']
     if not 0 < gap <= .050001:
-        return
-    voice = run.outputs['voice']
-    if not voice.get('audios') or len(voice['audios']) != len(voice.get('durations', [])):
         return
     cancellation(run_id)
     source = asset_path(voice['audios'][-1])
@@ -587,6 +648,8 @@ def supervise(run_id):
         current = db.get(Run, run_id)
         current.stage, current.updated = 'supervisor', now()
         db.commit()
+    if run.outputs.get('_script_only') and 'script' in run.outputs:
+        raise NeedsInput('Senaryo hazır. Yalnız senaryo seçildiği için ses, görsel ve video üretimi başlatılmadı.')
     initial_brief(run_id)
     fit_voice_boundary(run_id)
     run, project, _ = state(run_id)

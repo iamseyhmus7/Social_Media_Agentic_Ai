@@ -386,3 +386,44 @@ def research(topic):
             except Exception:
                 errors.append('YouTube araştırma verisi alınamadı.')
     return {'sources': sources, 'fetched_at': fetched, 'current_data_available': bool(sources), 'notice': 'Bu kaynaklar güncel konu sinyalleridir; platform genelinde trend sıralaması değildir.' if sources else 'Güncel kaynak verisi yok; konsept model bilgisiyle hazırlanacak.', 'errors': errors}
+
+
+def research_story(query, *, transport=None, user_agent=None):
+    """Read public encyclopedia text, never promote search titles to verified facts.
+
+    A fixed HTTPS destination prevents model-supplied URLs from reaching private hosts.
+    Source excerpts remain untrusted data and are explicitly not independent verification.
+    """
+    from urllib.parse import quote
+    result = {'sources':[], 'query':query, 'errors':[],
+        'fetched_at':datetime.now(timezone.utc).isoformat(),
+        'verification_scope':'retrieved_encyclopedia_text; not independent historical verification'}
+    if not query.strip():
+        result['errors'].append('Supervisor kaynak araştırması için konu sorgusu vermedi.')
+        return result
+    identity = user_agent or settings().story_research_user_agent
+    if not identity:
+        result['errors'].append('STORY_RESEARCH_USER_AGENT: kaynak servisi için açıklayıcı bot adı ve paylaşılabilir iletişim adresi yapılandırılmalı.')
+        return result
+    try:
+        with httpx.Client(timeout=20, follow_redirects=False, transport=transport,
+                headers={'User-Agent':identity}) as client:
+            response = client.get('https://en.wikipedia.org/w/api.php', params={
+                'action':'query','format':'json','list':'search','srsearch':query[:160], 'srlimit':2,'srnamespace':0})
+            response.raise_for_status()
+            pages = response.json().get('query',{}).get('search',[])[:2]
+            for page in pages:
+                pageid = int(page['pageid'])
+                response = client.get('https://en.wikipedia.org/w/api.php', params={
+                    'action':'query','format':'json','prop':'extracts','pageids':pageid,
+                    'explaintext':1,'exsectionformat':'plain'})
+                response.raise_for_status()
+                extract = response.json().get('query',{}).get('pages',{}).get(str(pageid),{})
+                text = extract.get('extract','')[:14000].strip()
+                if text:
+                    result['sources'].append({'id':f'wikipedia:{pageid}', 'title':extract.get('title',page['title']),
+                        'url':'https://en.wikipedia.org/wiki/'+quote(page['title'].replace(' ','_'),safe=''),
+                        'text':text, 'source':'Wikipedia article extract', 'fetched_at':result['fetched_at']})
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        result['errors'].append('Ansiklopedi kaynak metni alınamadı; doğrulama yapılmış sayılmadı.')
+    return result
