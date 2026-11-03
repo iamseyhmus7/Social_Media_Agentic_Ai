@@ -174,6 +174,36 @@ def test_feedback_routes_and_reuses_owned_sources(setup,monkeypatch,stages):
             assert file_hash(media_path(asset.path))==asset.sha256
 
 
+def test_feedback_receives_actual_render_layers_and_keeps_media(setup, monkeypatch):
+    import json
+    source_id, project_id = owned_source()
+    with DB() as db:
+        source = db.get(Run, source_id)
+        folder = workdir(source.project_id, source.id)
+    (folder / 'render-manifest.json').write_text(json.dumps({'clips': [
+        {'file': 'shot-000.mp4', 'start_frame': 0, 'frames': 90,
+         'design': {'object_3d': {'kind': 'torus'}}}]}), encoding='utf-8')
+    def route(self, schema, role, context, **kwargs):
+        segment = context['current_edit']['segments'][0]
+        assert segment['scene_index'] == 0
+        assert segment['render_layers']['design']['object_3d']['kind'] == 'torus'
+        return {'summary': 'Yalnız kurgu katmanını kaldır.', 'stages': ['editor'],
+                'scene_indices': [0], 'instructions': 'Halkayı kaldır; kaynağı ve sesi koru.'}
+    monkeypatch.setattr(agent.Evren, 'generate', route)
+    with DB() as db:
+        item = create_feedback(db, db.get(Project, project_id), db.get(User, 'alice'),
+            FeedbackRequest(run_id=source_id, prompt='Açılıştaki halkayı kaldır.', request_id=str(uuid4())))
+        fid = item.id
+    process_feedback(fid)
+    with DB() as db:
+        item = db.get(Feedback, fid)
+        assert item.status == 'applied', item.error
+        run = db.get(Run, item.run_id)
+        assert run.outputs['_edit_only'] and run.outputs['_repair_stages'] == ['editor']
+        assert all(key in run.outputs for key in ('script', 'voice', 'visual', 'motion'))
+        assert run.outputs['_changed_scenes'] == [0]
+
+
 def test_ambiguous_feedback_asks_before_creating_revision(setup,monkeypatch):
     source_id,project_id=owned_source()
     monkeypatch.setattr(agent.Evren,'generate',lambda *a,**k:{'summary':'Tercihi netleştir.',
@@ -206,7 +236,7 @@ def test_duration_feedback_updates_target_and_rebuilds_narration(setup,monkeypat
 
 def test_native_tools_and_explicit_media_routing(monkeypatch):
     from backend.app.providers import Evren
-    for key,value in {'evren_api_key':'test','evren_base_url':'https://test.invalid/v1','evren_model':'text',
+    for key,value in {'evren_api_key':'test','evren_base_url':'https://test.invalid/v1','evren_model':'text','evren_supervisor_model':'',
         'evren_media_model':'mimo','evren_protocol':'openai_chat','evren_contract_verified':True,'agent_protocol':'native_tools'}.items():monkeypatch.setattr(settings(),key,value)
     def respond(request):
         payload=json.loads(request.content)

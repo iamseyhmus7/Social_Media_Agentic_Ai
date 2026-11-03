@@ -75,6 +75,53 @@ def test_successful_scenes_survive_another_scene_failure(tmp_path,monkeypatch):
     assert [c[1].get('scene_index') for c in third.calls]==[1]
 
 
+@pytest.mark.parametrize('streaming', [False, True])
+def test_targeted_edit_preserves_other_scenes_and_global_look(tmp_path, monkeypatch, streaming):
+    from backend.app.scene_edit import decide
+    monkeypatch.setattr(settings(), 'editor_parallelism', 1)
+    run, shots, seen = fixtures()
+    run.outputs['_config'] = {'editor_streaming_enabled': streaming}
+    hashes = {s['shot_id']: 'hash-' + s['shot_id'] for s in shots}
+    args = (shots, [1, 1], {s['shot_id']: 60 for s in shots}, seen)
+    source = tmp_path / 'source'; source.mkdir()
+    decide(run, source, *args, Model(), lambda: None, [], 'Konu', {}, hashes)
+    baseline = json.loads((source / ('edit-decisions-v4.json' if streaming else 'edit-decisions-v3.json')).read_text(encoding='utf-8'))
+    baseline.update(durations=[1, 1], source_hashes=hashes)
+    revision = tmp_path / 'revision'; revision.mkdir()
+    (revision / 'edit-source-decisions.json').write_text(json.dumps(baseline), encoding='utf-8')
+    run.outputs.update(_edit_only=True, _changed_scenes=[0], _repair_stages=['editor'],
+                       _feedback={'instructions': 'Yalnız ilk sahnenin efektini kaldır.'})
+    model = Model()
+    result = decide(run, revision, *args, model, lambda: None, [], 'Konu', {}, hashes)
+    assert [call[1].get('scene_index') for call in model.calls] == [0]
+    assert model.calls[0][1]['current_scene_edit'] == baseline['scenes'][0]
+    saved = json.loads((revision / ('edit-decisions-v4.json' if streaming else 'edit-decisions-v3.json')).read_text(encoding='utf-8'))
+    assert saved['scenes'][1] == baseline['scenes'][1]
+    assert saved['look'] == baseline['look']
+    assert sum(s['frames'] for s in result['segments']) == 60
+
+
+def test_targeted_render_reuses_verified_source_part(tmp_path, monkeypatch):
+    from backend.app.streaming_render import SceneRenderQueue
+    from backend.app.storage import file_hash
+    from backend.app import streaming_render
+    queue = object.__new__(SceneRenderQueue)
+    queue.check = lambda: None
+    queue.run = SimpleNamespace(id=None)
+    queue.parts = tmp_path / 'new'; queue.parts.mkdir()
+    queue.source_parts = tmp_path / 'source'; queue.source_parts.mkdir()
+    key = 'same-visible-content'
+    old = queue.source_parts / key; old.mkdir()
+    (old / 'video.mp4').write_bytes(b'verified rendered scene')
+    (old / 'complete.json').write_text(json.dumps({'key': key, 'range': [30, 59],
+        'sha256': file_hash(old / 'video.mp4')}))
+    monkeypatch.setattr(streaming_render, 'editor_progress', lambda *a: None)
+    result = queue.render_chunk(key, 1, 'core', 30, 59, {})
+    assert result.is_relative_to(queue.parts)
+    assert result.read_bytes() == (old / 'video.mp4').read_bytes()
+    assert (result.parent / 'complete.json').is_file()
+
+
 def test_scene_contract_rejects_foreign_sources_and_out_of_bounds_cues(tmp_path,monkeypatch):
     from backend.app.scene_edit import decide
     monkeypatch.setattr(settings(),'editor_parallelism',1)
