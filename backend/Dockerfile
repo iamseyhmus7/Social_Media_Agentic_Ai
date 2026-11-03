@@ -29,7 +29,7 @@ FROM media-dependencies AS media
 USER root
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
-RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && apt-get update && apt-get install -y --no-install-recommends chromium && rm -rf /var/lib/apt/lists/*
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && if ! command -v chromium >/dev/null; then apt-get update && apt-get install -y --no-install-recommends chromium && rm -rf /var/lib/apt/lists/*; fi
 COPY remotion/production/package*.json /app/remotion/production/
 RUN cd /app/remotion/production && npm ci --omit=dev --no-audit --no-fund && mkdir -p node_modules/.cache && chown -R sahne:sahne node_modules/.cache
 RUN cd /app/remotion/production && node --input-type=module -e "import {ensureBrowser} from '@remotion/renderer'; await ensureBrowser({chromeMode:'headless-shell',logLevel:'error'});" && chown -R sahne:sahne node_modules/.remotion

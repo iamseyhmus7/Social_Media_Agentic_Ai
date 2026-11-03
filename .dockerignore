@@ -3,11 +3,15 @@
 .cache
 .env
 data
+output
 frontend/node_modules
 frontend/dist
 docs
 **/__pycache__
 .pytest_cache
+.test
+**/.test
+**/.pytest_cache
 design-qa.md
 remotion/node_modules
 remotion/production/node_modules
