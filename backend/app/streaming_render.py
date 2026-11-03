@@ -4,6 +4,7 @@ Only the first 18 frames of a non-opening scene depend on its predecessor.
 Unresolved scenes are private placeholders and are never allowed in a rendered range.
 """
 import json
+import shutil
 from copy import deepcopy
 from contextvars import copy_context
 from concurrent.futures import ThreadPoolExecutor
@@ -59,6 +60,14 @@ class SceneRenderQueue:
         self.hashes={p.name:file_hash(p) for p in public.iterdir() if p.is_file()}
         self.parts=folder/'render-parts';self.parts.mkdir(exist_ok=True)
         self.cfg=settings()
+        self.source_parts = None
+        if run.outputs.get('_edit_only') and run.outputs.get('_edit_source_run'):
+            from .db import DB, Run
+            from .storage import media_path
+            with DB() as db:
+                source = db.get(Run, run.outputs['_edit_source_run'])
+                if source and source.user_id == run.user_id and source.project_id == run.project_id:
+                    self.source_parts = media_path(f'{source.project_id}/{source.id}/render-parts')
 
     def partial_manifest(self):
         clips=[];cursor=0;graphics=[];sounds=[]
@@ -108,6 +117,13 @@ class SceneRenderQueue:
         self.check()
         folder=self.parts/key;folder.mkdir(exist_ok=True)
         output=folder/'video.mp4';receipt=folder/'complete.json'
+        if not receipt.is_file() and getattr(self, 'source_parts', None):
+            old = self.source_parts/key
+            if (old/'complete.json').is_file() and (old/'video.mp4').is_file():
+                saved = json.loads((old/'complete.json').read_text(encoding='utf-8'))
+                if saved.get('range') == [start,end] and saved.get('sha256') == file_hash(old/'video.mp4'):
+                    shutil.copyfile(old/'video.mp4', output)
+                    atomic_json(receipt, saved)
         if receipt.is_file() and output.is_file():
             saved=json.loads(receipt.read_text(encoding='utf-8'))
             if saved.get('sha256')==file_hash(output) and saved.get('range')==[start,end]:

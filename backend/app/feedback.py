@@ -9,6 +9,28 @@ from .config import use_run_settings, snapshot_settings
 from .orchestration import descendants
 
 
+def edit_context(source):
+    """Describe rendered layers separately from generated source footage."""
+    import json
+    from .storage import workdir
+    path = workdir(source.project_id, source.id) / 'render-manifest.json'
+    if not path.is_file() or path.stat().st_size > 4_000_000:
+        return {'available': False}
+    try:
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {'available': False}
+    lookup = {s['shot_id'] + '.mp4': s.get('scene_index')
+              for s in source.outputs.get('motion', {}).get('plan', {}).get('shots', [])}
+    return {'available': True, 'timebase_fps': manifest.get('fps', 30),
+        'segments': [{'segment_index': i, 'scene_index': c.get('scene_index', lookup.get(c.get('file'))),
+            'source_file': c.get('file'), 'start_frame': c.get('start_frame'), 'frames': c.get('frames'),
+            'render_layers': {k: c[k] for k in ('design', 'title', 'transition') if k in c}}
+            for i, c in enumerate(manifest.get('clips', [])[:64])],
+        'graphics': manifest.get('graphics', [])[:24],
+        'source_observations': source.outputs.get('editor', {}).get('report', {}).get('content_review', {}).get('observations', [])[:64]}
+
+
 def serialize(item):
     return {k: getattr(item, k) for k in ('id', 'status', 'prompt', 'answer', 'decision', 'run_id', 'error', 'source_run_id')}
 
@@ -44,6 +66,34 @@ def create_feedback(db, project, user, data):
     return item
 
 
+def feedback_decision(source, prompt, answer='', previous_question=''):
+    inputs = source.outputs
+    current_edit = edit_context(source)
+    with use_run_settings(inputs.get('_config', {})):
+        result = FeedbackDecision.model_validate(Evren().generate(FeedbackDecision, 'Supervisor', {
+            'feedback': prompt, 'clarification_answer': answer,
+            'previous_question': previous_question,
+            'script': inputs.get('script'), 'brief': inputs.get('supervisor'),
+            'quality': inputs.get('quality'),
+            'current_edit': current_edit,
+            'instruction': 'Kullanıcının mevcut video için değişiklik isteğini yorumla. '
+            'stages yalnızca doğrudan değişecek uzmanlar; bağımlılıkları kod ekler. '
+            'Altyazı/kesme/geçiş=editor, anlatıcı=voice, görüntü=visual, kaynak hareket=motion, '
+            'anlatılan bilgi=script veya strategy, paylaşım metni=publisher. Bunlar örnektir; anlamı değerlendir. '
+            'Önce current_edit içinden değişecek öğenin kaynak klibe mi render katmanına mı ait olduğunu belirle. '
+            'design/object_3d, grafik, yazı, yerleşim ve efekt Remotion katmanıdır; bunları kaldırmak/değiştirmek için editor seç. '
+            'Render katmanı değişiminde visual veya motion seçme; mevcut kaynakları koru. '
+            'visual yalnız kaynak resmin içeriği değişecekse, motion yalnız kaynak klibin hareketi değişecekse seç. '
+            'Kaldır talebini yeni görsel veya nesne üretme talebine genişletme. İstenmeyen alanları koru. '
+            'segment_index ile scene_index farklıdır; görünen planları zaman çizelgesindeki gerçek scene_index ile eşleştir. '
+            'Belirsiz daha güzel olsun talebinde clarification ile kısa soru sor. Açık talepte soru sorma. '
+            'scene_indices yalnız açıkça belirlenen sahneler (0 tabanlı); genel değişimde boş liste. '
+            'Kullanıcı süre değişikliği istemediyse target_duration=null bırak. Süre değişiyorsa 30/45/60 değerlerinden birini ve script görevini seç. '
+            'Desteklenmeyen açık süre talebinde veya belirsiz süre tercihinde kısa açıklama sor. '
+            'instructions somut düzenleme yönergesi içersin. Birden fazla talebi birlikte değerlendir.'})).model_dump()
+    return result
+
+
 def process_feedback(feedback_id):
     with DB() as db:
         item = db.get(Feedback, feedback_id)
@@ -53,21 +103,7 @@ def process_feedback(feedback_id):
         prompt, answer = item.prompt, item.answer
         inputs = source.outputs
     try:
-        with use_run_settings(inputs.get('_config', {})):
-            result = FeedbackDecision.model_validate(Evren().generate(FeedbackDecision, 'Supervisor', {
-                'feedback': prompt, 'clarification_answer': answer,
-                'previous_question': item.decision.get('clarification', ''),
-                'script': inputs.get('script'), 'brief': inputs.get('supervisor'),
-                'quality': inputs.get('quality'),
-                'instruction': 'Kullanıcının mevcut video için değişiklik isteğini yorumla. '
-                'stages yalnızca doğrudan değişecek uzmanlar; bağımlılıkları kod ekler. '
-                'Altyazı/kesme/geçiş=editor, anlatıcı=voice, görüntü=visual, kaynak hareket=motion, '
-                'anlatılan bilgi=script veya strategy, paylaşım metni=publisher. Bunlar örnektir; anlamı değerlendir. '
-                'Belirsiz daha güzel olsun talebinde clarification ile kısa soru sor. Açık talepte soru sorma. '
-                'scene_indices yalnız açıkça belirlenen sahneler (0 tabanlı); genel değişimde boş liste. '
-                'Süre değişiyorsa target_duration 30/45/60 değerlerinden biri olmalı ve script görevini seç. '
-                'Desteklenmeyen açık süre talebinde veya belirsiz süre tercihinde kısa açıklama sor. '
-                'instructions somut düzenleme yönergesi içersin. Birden fazla talebi birlikte değerlendir.'})).model_dump()
+        result = feedback_decision(source, prompt, answer, item.decision.get('clarification', ''))
         with DB() as db:
             item = db.scalar(select(Feedback).where(Feedback.id==feedback_id).with_for_update())
             if item.status != 'queued':

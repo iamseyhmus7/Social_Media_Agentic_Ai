@@ -25,13 +25,23 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
     lookup={s['shot_id']:s['scene_index'] for s in shots}
     cache=folder/'scene-decisions'
     cache.mkdir(exist_ok=True)
+    baseline = None
+    baseline_path = folder / 'edit-source-decisions.json'
+    if (run.outputs.get('_edit_only') and run.outputs.get('_changed_scenes') and baseline_path.is_file()
+            and set(run.outputs.get('_repair_stages', [])) <= {'editor', 'publisher'}):
+        candidate = json.loads(baseline_path.read_text(encoding='utf-8'))
+        if (candidate.get('durations') == durations and candidate.get('source_hashes') == signature
+                and len(candidate.get('scenes', [])) == len(durations)):
+            baseline = candidate
     compact_brief={k:v for k,v in (run.outputs.get('supervisor') or {}).items() if k not in ('checks','execution_plan')}
     quality=run.outputs.get('_last_quality')
     global_quality=([f for f in (quality or {}).get('findings',[]) if f.get('scene_index') is None] or None) if streaming else quality
     look_key=digest({'compiler':'scene-v3-audience-drive','brief':compact_brief,'script':run.outputs['script'],
                      'preferences':preferences,'feedback':run.outputs.get('_feedback'),'quality':global_quality})
     look_path=cache/('look-'+look_key+'.json')
-    if look_path.is_file():
+    if baseline:
+        look = EditLook.model_validate(baseline['look']).model_dump()
+    elif look_path.is_file():
         look=EditLook.model_validate_json(look_path.read_text(encoding='utf-8')).model_dump()
     else:
         def request_look():
@@ -101,6 +111,11 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
             'annotation underline/circle/highlight yalnız kısa title vurgusudur; annotation_text ile title içinden kısa bir kelime seç. '
             'wipe/flip/clock_wipe resmî geçişlerdir. Araçları içerik gerekçesiyle seç; her sahneye efekt eklemek zorunlu değil.'}
         context['capabilities']=SCENE_CAPABILITIES
+        if baseline:
+            context['current_scene_edit'] = baseline['scenes'][scene]
+            context['instruction'] += (' Mevcut sahne kurgusunu temel al. Yalnız kullanıcı talebindeki katmanı değiştir; '
+                'kaynak seçimini, kesmeleri, sesleri ve diğer tasarım alanlarını talep gerektirmedikçe koru. '
+                'Senaryodaki eski dekor talimatını kullanıcı geri bildiriminin önüne koyma.')
         if scene==0 and run.outputs.get('_config',{}).get('engagement_policy',0):
             context['opening_hook']=run.outputs['script'].get('hook','')
             context['instruction'] += (' İlk 1–3 saniyede opening_hook ile uyumlu güçlü bir görsel giriş kur. '
@@ -135,7 +150,9 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
                 if scene==0 and preferences.get('map_intro') and not any(c.kind=='map_flyover' and c.start_frame==0 for c in self.graphics):
                     raise ValueError('Harita açılışı sahne 0 kare 0 ile başlamalı.')
                 return self
-        if path.is_file():
+        if baseline and scene not in run.outputs['_changed_scenes']:
+            result = GroundedScene.model_validate(baseline['scenes'][scene]).model_dump()
+        elif path.is_file():
             result=GroundedScene.model_validate_json(path.read_text(encoding='utf-8')).model_dump()
         else:
             from .parallel_work import editor_progress

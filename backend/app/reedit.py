@@ -1,5 +1,6 @@
 """Create an independent edit revision from verified owned media, without generation."""
 from copy import deepcopy
+import json
 import shutil
 from uuid import uuid4
 from fastapi import HTTPException
@@ -74,6 +75,15 @@ def create_reedit(db, project, user, request, *, commit=True, preserve_editor=Fa
             item['file'] = filename
         # A previously verified transcript cache can survive a style-only edit.
         old_folder = media_path(f'{project.id}/{source.id}')
+        decisions = old_folder / 'edit-decisions-v4.json'
+        if decisions.is_file() and decisions.stat().st_size <= 4_000_000:
+            baseline = json.loads(decisions.read_text(encoding='utf-8'))
+            baseline['durations'] = retained['voice']['durations']
+            baseline['source_hashes'] = {key: db.get(Asset, clip['asset_id']).sha256
+                for key, clip in retained['motion']['clips'].items()}
+            target = folder / 'edit-source-decisions.json'
+            target.write_text(json.dumps(baseline, ensure_ascii=False), encoding='utf-8')
+            created.append(target)
         for name in ('captions.srt', 'captions.words.json', 'captions.cache.json'):
             if (old_folder / name).is_file():
                 shutil.copyfile(old_folder / name, folder / name)
