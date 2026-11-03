@@ -10,6 +10,21 @@ from backend.app.media_providers import cloudflare_image, elevenlabs_audio
 from backend.app.providers import ProviderError, QuotaExceeded
 
 
+def test_probe_uses_bounded_threads_without_changing_explicit_choice(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from backend.app import media
+    calls = []
+    def launch(args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(poll=lambda: 0, returncode=0)
+    monkeypatch.setattr(media.subprocess, 'Popen', launch)
+    probe = media.settings().ffprobe_bin
+    media.command([probe, '-v', 'error', 'clip.mp4'], tmp_path)
+    assert calls[-1][1:3] == ['-threads', '1']
+    media.command([probe, '-threads', '2', 'clip.mp4'], tmp_path)
+    assert calls[-1].count('-threads') == 1 and calls[-1][2] == '2'
+
+
 @pytest.fixture
 def remote_config(monkeypatch):
     cfg = settings()
@@ -83,6 +98,7 @@ def test_remote_voice_converts_to_valid_wav(remote_config, monkeypatch, tmp_path
     import struct
     import wave
     from backend.app import media, media_providers
+    monkeypatch.setattr(media.shutil, 'which', lambda name: name)
     monkeypatch.setattr(remote_config, 'tts_provider', 'elevenlabs')
     monkeypatch.setattr(media_providers, 'elevenlabs_audio', lambda *args: b'fake-mp3')
     target = tmp_path / 'voice.wav'
@@ -117,3 +133,22 @@ def test_remote_image_dispatch_avoids_local_model(remote_config, monkeypatch, tm
     monkeypatch.setattr(media_providers, 'cloudflare_image', lambda *args: seen.append(args[0]))
     media.image('landscape', tmp_path / 'scene.png', lambda: None)
     assert seen == ['landscape']
+
+
+@pytest.mark.parametrize('missing',['ffmpeg','ffprobe'])
+def test_voice_checks_local_tools_before_paid_request(remote_config,monkeypatch,tmp_path,missing):
+    from backend.app import media,media_providers
+    monkeypatch.setattr(remote_config,'ffmpeg_bin','ffmpeg')
+    monkeypatch.setattr(remote_config,'ffprobe_bin','ffprobe')
+    monkeypatch.setattr(media.shutil,'which',lambda name:None if name==missing else name)
+    monkeypatch.setattr(media_providers,'elevenlabs_audio',lambda *a,**kw:pytest.fail('No paid request before tool preflight'))
+    with pytest.raises(RuntimeError,match=missing.upper()+'_BIN'):
+        media.voice('Test',tmp_path/'voice.wav',lambda:None)
+
+
+def test_missing_executable_reports_tool_name(monkeypatch,tmp_path):
+    from backend.app import media
+    def missing(*args,**kwargs):raise FileNotFoundError('missing')
+    monkeypatch.setattr(media.subprocess,'Popen',missing)
+    with pytest.raises(RuntimeError,match='Medya aracı bulunamadı.*absent-ffmpeg'):
+        media.command(['absent-ffmpeg','-version'],tmp_path)

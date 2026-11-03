@@ -235,3 +235,50 @@ def test_truncation_budget_expansion_is_persisted_once(setup):
     assert recovery.task_budget(ident,'task','expand') is True
     assert recovery.task_budget(ident,'task','expand') is False
     assert recovery.task_budget(ident,'task','expanded') is True
+
+
+@pytest.mark.parametrize('target',[30,45,60])
+def test_small_audio_overflow_is_fitted_without_rewriting_or_tts(setup,monkeypatch,target):
+    import wave
+    from backend.app import orchestration,media
+    from backend.app.storage import workdir,register,file_hash
+    high=min(60,target+2)
+    seconds=high+.24
+    ident=voice_run(setup,seconds)
+    with DB() as db:
+        run=db.get(Run,ident);project=db.get(Project,run.project_id);project.duration=target
+        path=workdir(project.id,run.id)/'original.wav'
+        with wave.open(str(path),'wb') as wav:
+            wav.setparams((1,2,1000,0,'NONE','none'));wav.writeframes(b'\xe8\x03'*round(seconds*1000))
+        audio=register(db,run,path,'audio')
+        original={**run.outputs,'supervisor':{**run.outputs['supervisor'],'duration':target},
+            'voice':{'duration':seconds,'durations':[seconds],'audios':[audio]}}
+        run.outputs=original;db.commit()
+    original_hash=file_hash(path)
+    calls=[]
+    def fit(source,destination,speed,check):
+        assert source==path and 1<speed<=1.01
+        check();calls.append(speed)
+        count=round((high-.02)*1000)
+        with wave.open(str(destination),'wb') as wav:
+            wav.setparams((1,2,1000,0,'NONE','none'));wav.writeframes(b'\xe8\x03'*count)
+        return count/1000
+    monkeypatch.setattr(media,'fit_audio_speed',fit)
+    monkeypatch.setattr(Evren,'generate',lambda *a,**kw:pytest.fail('Small fit must not rewrite narration'))
+    recovery.repair_voice(ident)
+    orchestration.fit_voice_boundary(ident)  # Already fitted: idempotent.
+    with DB() as db:
+        outputs=db.get(Run,ident).outputs
+    assert len(calls)==1 and orchestration.voice_valid(outputs)
+    assert outputs['script']==original['script'] and outputs['strategy']==original['strategy']
+    assert outputs['voice']['boundary_speed_adjustment']['original_audios']==[audio]
+    assert outputs['_recovery']['voice']['text_used']==0
+    assert file_hash(path)==original_hash
+
+
+def test_large_overflow_still_requires_model_repair(setup,monkeypatch):
+    from backend.app import orchestration,media
+    ident=voice_run(setup,67.44)
+    monkeypatch.setattr(media,'fit_audio_speed',lambda *a,**kw:pytest.fail('Large difference must not speed up locally'))
+    orchestration.fit_voice_boundary(ident)
+    with DB() as db:assert db.get(Run,ident).outputs['voice']['duration']==67.44
