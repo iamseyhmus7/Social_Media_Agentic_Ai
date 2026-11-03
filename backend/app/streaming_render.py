@@ -120,7 +120,7 @@ class SceneRenderQueue:
         try:
             render_visual([self.cfg.node_bin,self.cfg.remotion_root.resolve()/'production/render.mjs',folder/'manifest.json',
                 self.public,output,self.cfg.remotion_browser_executable,'chunk'],folder,self.check)
-            self.inspect(output,end-start+1)
+            self.inspect(output,end-start+1,manifest.get('output_fps',30))
             atomic_json(receipt,{'key':key,'range':[start,end],'sha256':file_hash(output),'scene':scene,'part':part})
             editor_progress(getattr(self.run,'id',None),'render',f'{scene}-{part}','rendered')
             return output
@@ -129,11 +129,11 @@ class SceneRenderQueue:
                 f'{type(exc).__name__}: {exc} Ayrıntılar: render-parts/{key}/tool.log')
             raise
 
-    def inspect(self,path,frames):
+    def inspect(self,path,frames,output_fps=30):
         media.command([self.cfg.ffprobe_bin,'-v','error','-count_frames','-show_streams','-of','json',path],path.parent,self.check,timeout=120)
         data=json.loads((path.parent/'tool.log').read_text(encoding='utf-8'))
         video=next(v for v in data['streams'] if v['codec_type']=='video')
-        if (video['width'],video['height'],video['avg_frame_rate'],int(video['nb_read_frames']))!=(1080,1920,'30/1',frames):
+        if (video['width'],video['height'],video['avg_frame_rate'],int(video['nb_read_frames']))!=(1080,1920,f'{output_fps}/1',frames*output_fps//30):
             raise RuntimeError('Render parçasının çözünürlük/FPS/kare sayısı doğrulanamadı.')
 
     def finish(self,manifest):
@@ -159,7 +159,7 @@ class SceneRenderQueue:
         listing.write_text('\n'.join("file '"+p.relative_to(self.folder).as_posix()+"'" for p in paths),encoding='utf-8')
         media.command([self.cfg.ffmpeg_bin,'-y','-f','concat','-safe','1','-i',listing.name,'-map','0:v:0','-an','-c:v','copy',
             '-movflags','+faststart',output.name],self.folder,self.check)
-        self.inspect(output,manifest['duration_frames'])
+        self.inspect(output,manifest['duration_frames'],manifest.get('output_fps',30))
         atomic_json(marker,{'signature':signature,'sha256':file_hash(output),'parts':len(paths),'frames':manifest['duration_frames']})
 
     def close(self):

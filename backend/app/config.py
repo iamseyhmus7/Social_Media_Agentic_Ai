@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     node_bin: str = 'node'
     remotion_browser_executable: str = ''
     remotion_render_concurrency: int = Field(default=2,ge=1,le=4)
+    remotion_output_fps: Literal[30, 60] = 60
     image_provider: str = 'local'
     cloudflare_account_id: str = ''
     cloudflare_api_token: str = Field(default='', repr=False)
@@ -105,6 +106,7 @@ def snapshot_settings():
     result.update(video_execution_policy=c.video_execution_policy, kaggle_motion_profile=c.kaggle_motion_profile, video_edit_policy=c.video_edit_policy, editor_parallelism=c.editor_parallelism, editor_call_timeout_seconds=c.editor_call_timeout_seconds, remotion_render_concurrency=c.remotion_render_concurrency)
     result.update(supervisor_policy=c.supervisor_policy, supervisor_timeout_seconds=c.supervisor_timeout_seconds)
     result['editor_streaming_enabled'] = c.editor_streaming_enabled
+    result['remotion_output_fps'] = c.remotion_output_fps
     result['video_review_policy'] = c.video_review_policy
     result['engagement_policy'] = c.engagement_policy
     result['elevenlabs_turkish_only'] = c.elevenlabs_turkish_only
@@ -129,6 +131,7 @@ def use_run_settings(snapshot):
     values.setdefault('video_edit_policy', 'weighted_v2')
     values.setdefault('editor_parallelism', 1)
     values.setdefault('remotion_render_concurrency', 2)
+    values.setdefault('remotion_output_fps', 30)
     if 'elevenlabs_voice_profiles' in values:
         values['elevenlabs_voice_profiles'] = [VoiceProfile.model_validate(p) for p in values['elevenlabs_voice_profiles']]
     token = _run_settings.set(_base_settings().model_copy(update=values))

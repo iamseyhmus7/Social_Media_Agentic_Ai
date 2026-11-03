@@ -1,6 +1,6 @@
 import React from 'react';
 import {ThreeCanvas} from '@remotion/three';
-import {useCurrentFrame,useVideoConfig,interpolate} from 'remotion';
+import {useCurrentFrame,useVideoConfig,interpolate} from './timeline.jsx';
 
 // Bounded native geometry only: no downloaded models, textures or generated code.
 export const Object3D=({object,top=470})=>{

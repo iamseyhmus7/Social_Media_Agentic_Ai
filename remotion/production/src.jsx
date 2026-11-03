@@ -1,7 +1,7 @@
 import React, {useMemo} from 'react';
 import {Automatic} from './Automatic.jsx';
 import {Editorial} from './Editorial.jsx';
-import {AbsoluteFill,Composition,Sequence,Freeze,Img,OffthreadVideo,registerRoot,staticFile,useCurrentFrame,useVideoConfig,interpolate,spring,Easing} from 'remotion';
+import {AbsoluteFill,Composition,Sequence,Freeze,Img,OffthreadVideo,registerRoot,staticFile,useCurrentFrame,useVideoConfig,interpolate,spring,Easing} from './timeline.jsx';
 import {createTikTokStyleCaptions} from '@remotion/captions';
 const clamp={extrapolateLeft:'clamp',extrapolateRight:'clamp'};
 const ease={...clamp,easing:Easing.inOut(Easing.cubic)};
@@ -50,6 +50,6 @@ const ProductionContent=(props)=>{
 };
 const defaults={duration_frames:900,clips:[],captions:[],words:[],style:'classic',brand:'',color:'#A98BFF'};
 const Production=ProductionContent;
-registerRoot(()=> <Composition id="SahneProduction" component={Production} width={1080} height={1920} fps={30} durationInFrames={900} defaultProps={defaults} calculateMetadata={({props})=>({durationInFrames:props.duration_frames})}/>);
+registerRoot(()=> <Composition id="SahneProduction" component={Production} width={1080} height={1920} fps={30} durationInFrames={900} defaultProps={defaults} calculateMetadata={({props})=>({fps:props.output_fps??30,durationInFrames:props.duration_frames*(props.output_fps??30)/30})}/>);
 
 

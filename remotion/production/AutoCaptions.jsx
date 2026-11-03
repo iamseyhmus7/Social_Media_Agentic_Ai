@@ -1,5 +1,5 @@
 import React,{useMemo} from 'react';
-import {useCurrentFrame,useVideoConfig} from 'remotion';
+import {useCurrentFrame,useVideoConfig} from './timeline.jsx';
 import {captionPages} from './caption-pages.mjs';
 
 export const AutoCaptions=({words=[],captions=[],accent,size=47})=>{

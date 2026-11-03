@@ -157,7 +157,8 @@ class ClipObservation(Strict):
 CameraKind = Literal['locked', 'push_in', 'pull_back', 'pan_left', 'pan_right', 'shake',
                      'tilt_up', 'tilt_down', 'roll_left', 'roll_right', 'snap_zoom', 'arc']
 TransitionKind = Literal['cut', 'dissolve', 'push', 'reveal', 'whip', 'zoom', 'light_sweep',
-                         'iris', 'diagonal_wipe', 'blur_dissolve', 'zoom_out', 'slide_up']
+                         'iris', 'diagonal_wipe', 'blur_dissolve', 'zoom_out', 'slide_up',
+                         'wipe', 'flip', 'clock_wipe']
 TypographyKind = Literal['rise', 'words', 'characters', 'mask', 'blur_in', 'elastic',
                          'typewriter', 'flip', 'tracking']
 SceneTemplate = Literal['none', 'editorial', 'glass', 'blueprint', 'cinema']
@@ -189,11 +190,19 @@ class SceneDesign(Strict):
     title_size: int = Field(default=64, ge=36, le=110)
     lighting: Literal['none', 'glow', 'sweep', 'gradient'] = 'none'
     particles: int = Field(default=0, ge=0, le=24)
+    effects: list[Literal['color_grade', 'glow', 'vignette']] = Field(default_factory=list, max_length=3)
+    effect_strength: float = Field(default=.35, ge=0, le=1)
+    motion_blur: bool = False
+    lottie_asset: Literal['none', 'pulse_ring', 'flow_arrow'] = 'none'
+    annotation: Literal['none', 'underline', 'circle', 'highlight'] = 'none'
+    annotation_text: str = Field(default='', max_length=24)
 
     @model_validator(mode='after')
     def secondary_required(self):
         if self.layout != 'full' and not self.secondary_shot_id:
             raise ValueError('Bölünmüş veya detay kadrajı ikinci bir doğrulanmış çekim gerektirir.')
+        if self.motion_blur and self.effects:
+            raise ValueError('Aynı çekimde effects ve motion_blur birlikte desteklenmiyor; birini seç veya farklı çekimlere uygula.')
         return self
 
 
@@ -205,6 +214,13 @@ SCENE_CAPABILITIES = {
     'templates': list(get_args(SceneTemplate)),
     'objects_3d': ['cube', 'sphere', 'torus', 'icosahedron'],
     'lighting': ['none', 'glow', 'sweep', 'gradient'], 'particles_max': 24,
+    'effects': ['color_grade', 'glow', 'vignette'],
+    'effect_strength': '0–1; restrained default 0.35',
+    'motion_blur': 'optional; camera/footage only, keep captions sharp; cannot share a segment with effects; choose one or use separate segments',
+    'lottie_assets': ['none', 'pulse_ring', 'flow_arrow'],
+    'annotation': ['none', 'underline', 'circle', 'highlight'],
+    'annotation_text': 'optional short verbatim word/phrase from clip.title; empty emphasizes its first word',
+    'editing_guidance': 'Select effects for narrative purpose, not a quota. Lottie assets are local symbolic graphics; annotations emphasize clip.title. All timing is in 30-fps editorial ticks, independently of output FPS.',
     'unavailable': ['arbitrary_3d_models', 'optical_morph', 'depth_parallax', 'generated_code'],
 }
 
@@ -543,6 +559,8 @@ class RenderManifest(Strict):
     social_cta: bool = Field(default=False, exclude=True)
     version: Literal[1, 2] = 1
     fps: Literal[30] = 30
+    # Editing ticks remain 30 FPS; only the renderer output clock changes.
+    output_fps: Literal[30, 60] = 30
     width: Literal[1080] = 1080
     height: Literal[1920] = 1920
     duration_frames: int = Field(gt=0, le=1815)

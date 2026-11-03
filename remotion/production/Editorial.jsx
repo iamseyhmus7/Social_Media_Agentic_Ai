@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill,OffthreadVideo,Sequence,Freeze,Img,staticFile,useCurrentFrame,useVideoConfig,interpolate,Easing} from 'remotion';
+import {AbsoluteFill,OffthreadVideo,Sequence,Freeze,Img,staticFile,useCurrentFrame,useVideoConfig,interpolate,Easing} from './timeline.jsx';
 const clamp={extrapolateLeft:'clamp',extrapolateRight:'clamp'};
 const snap={...clamp,easing:Easing.bezier(.16,1,.3,1)};
 const paper='#F1EDE3',black='#101216';

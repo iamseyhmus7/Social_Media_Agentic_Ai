@@ -22,9 +22,16 @@ class Cancelled(RuntimeError):
 
 def command(args, cwd, check_cancel=lambda: None, timeout=1800):
     """No shell execution; drain to a bounded local log instead of a blocking PIPE."""
+    args = list(args)
+    if str(args[0]) == str(settings().ffprobe_bin) and '-threads' not in args:
+        args[1:1] = ['-threads', '1']
     log = Path(cwd) / 'tool.log'
     with log.open('wb') as output:
-        child = subprocess.Popen([str(a) for a in args], cwd=cwd, stdout=output, stderr=output, start_new_session=os.name != 'nt')
+        try:
+            child = subprocess.Popen([str(a) for a in args], cwd=cwd, stdout=output, stderr=output, start_new_session=os.name != 'nt')
+        except FileNotFoundError:
+            name = Path(str(args[0])).name
+            raise RuntimeError(f'Medya aracı bulunamadı ({name}); worker içindeki çalıştırılabilir dosya yolunu kontrol et.') from None
         start = time.monotonic()
         try:
             while child.poll() is None:
@@ -51,8 +58,16 @@ def command(args, cwd, check_cancel=lambda: None, timeout=1800):
     return log.read_text(encoding='utf-8', errors='replace')
 
 
+def require_audio_tools():
+    cfg = settings()
+    for key, name in (('ffmpeg_bin', 'FFmpeg'), ('ffprobe_bin', 'FFprobe')):
+        if not shutil.which(getattr(cfg, key)):
+            raise RuntimeError(f'{name} bulunamadı. Yerel worker için {key.upper()} yolunu ayarla; ses API isteği gönderilmedi.')
+
+
 def voice(text, target, check_cancel, *, voice_plan=None):
     check_cancel()
+    require_audio_tools()
     cfg = settings()
     normalized = unicodedata.normalize('NFC', ' '.join(text.split()))
     if cfg.tts_provider == 'elevenlabs':
@@ -81,6 +96,17 @@ def voice(text, target, check_cancel, *, voice_plan=None):
         if audioop.rms(wav.readframes(wav.getnframes()), wav.getsampwidth()) < 10:
             raise RuntimeError('Üretilen ses dosyası sessiz; seslendirme kontrol edilmeli.')
         wav.rewind()
+        return wav.getnframes() / wav.getframerate()
+
+
+def fit_audio_speed(source, target, speed, check_cancel=lambda: None):
+    """Fit a small timing overflow locally without changing pitch or dropping words."""
+    if not 1 < speed <= 1.01:
+        raise ValueError('Yerel ses süre ayarı en fazla yüzde bir olabilir.')
+    command([settings().ffmpeg_bin, '-y', '-i', str(Path(source).resolve()),
+             '-af', f'atempo={speed:.9f}', '-c:a', 'pcm_s16le', target.name],
+            target.parent, check_cancel)
+    with wave.open(str(target), 'rb') as wav:
         return wav.getnframes() / wav.getframerate()
 
 
@@ -335,11 +361,11 @@ def inspect_clip(path, expected_duration, check_cancel):
     duration = float(data['format']['duration'])
     if (video.get('width'), video.get('height')) != (480, 832) or video.get('avg_frame_rate') != '24/1' or video.get('codec_name') != 'h264' or duration + 0.05 < expected_duration or duration > 5.1:
         raise RuntimeError('Hareketli klibin kadrajı veya süresi uygun değil.')
-    command([cfg.ffmpeg_bin, '-v', 'error', '-xerror', '-i', str(path), '-f', 'null', '-'], path.parent, check_cancel, timeout=120)
+    command([cfg.ffmpeg_bin, '-v', 'error', '-xerror', '-threads', '2', '-i', str(path), '-f', 'null', '-'], path.parent, check_cancel, timeout=120)
     return {'duration': duration, 'width': video['width'], 'height': video['height'], 'decoded': True}
 
 
-def validate_final(folder, srt, check_cancel, target=None):
+def validate_final(folder, srt, check_cancel, target=None, expected_fps=30):
     cfg = settings()
     command([cfg.ffprobe_bin, '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', 'video.mp4'], folder, check_cancel, timeout=60)
     data = json.loads((folder / 'tool.log').read_text(encoding='utf-8'))
@@ -355,11 +381,11 @@ def validate_final(folder, srt, check_cancel, target=None):
         issues.append(f'Seslendirme süresi {duration:.1f} saniye; 30–60 saniyeye uygun senaryo gerekli.')
     if target is not None and abs(duration - target) > 2:
         issues.append('Son video hedef süreden iki saniyeden fazla sapıyor.')
-    if video.get('avg_frame_rate') != '30/1':
-        issues.append('Son video 30 FPS değil.')
+    if video.get('avg_frame_rate') != f'{expected_fps}/1':
+        issues.append(f'Son video {expected_fps} FPS değil.')
     if not srt.read_text(encoding='utf-8').strip():
         issues.append('Altyazı boş.')
-    signal_log = command([cfg.ffmpeg_bin, '-hide_banner', '-xerror', '-err_detect', 'explode', '-i', 'video.mp4', '-vf', 'blackdetect=d=0.6:pix_th=0.1', '-af', 'silencedetect=noise=-50dB:d=2.0', '-f', 'null', '-'], folder, check_cancel)
+    signal_log = command([cfg.ffmpeg_bin, '-hide_banner', '-xerror', '-err_detect', 'explode', '-threads', '2', '-i', 'video.mp4', '-vf', 'blackdetect=d=0.6:pix_th=0.1', '-af', 'silencedetect=noise=-50dB:d=2.0', '-f', 'null', '-'], folder, check_cancel)
     if signal_log is None:
         signal_log = (folder / 'tool.log').read_text(encoding='utf-8', errors='replace')
     from uuid import uuid4
@@ -382,6 +408,6 @@ def validate_final(folder, srt, check_cancel, target=None):
     caption_lines = [line for line in srt.read_text(encoding='utf-8').splitlines() if line and '-->' not in line and not line.isdigit()]
     if any(len(line) > 90 for line in caption_lines):
         issues.append('Altyazı satırı güvenli okunabilirlik sınırını aşıyor.')
-    return {'passed': not issues, 'duration': duration, 'width': video.get('width'), 'height': video.get('height'), 'issues': issues,
+    return {'passed': not issues, 'duration': duration, 'width': video.get('width'), 'height': video.get('height'), 'fps': expected_fps, 'issues': issues,
             'findings':findings,'check_id':check_id,'render_hash':file_hash(folder/'video.mp4') if (folder/'video.mp4').exists() else None,
             'limits': ['Estetik ve doğruluk için kullanıcı incelemesi gerekir.', 'Altyazı zamanları ASR tahminidir; stüdyoda kontrol edilmelidir.']}

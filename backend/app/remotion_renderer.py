@@ -141,7 +141,7 @@ def _render_production(run, project, folder, images, audios, durations, srt, che
                 from PIL import Image
                 logo='brand-logo.png'
                 Image.open(media_path(brand['logo_path'])).convert('RGBA').save(public/logo)
-            base={'version':2,'style':'auto','duration_frames':sum(scene_frames(durations)),
+            base={'version':2,'style':'auto','duration_frames':sum(scene_frames(durations)), 'output_fps':cfg.remotion_output_fps,
                 'captions':caption_items(srt),'words':word_items(srt,durations,run.outputs['script']),
                 'sources':sources,'brand':brand.get('name',''),'logo':logo,'color':brand.get('color','#A98BFF'),
                 'reconstruction_label':''}
@@ -210,7 +210,7 @@ def _render_production(run, project, folder, images, audios, durations, srt, che
         from PIL import Image
         logo = 'brand-logo.png'
         Image.open(media_path(brand['logo_path'])).convert('RGBA').save(public / logo)
-    manifest = RenderManifest.model_validate(dict(version=2 if getattr(run, 'pipeline_version', 2)>=3 else 1, duration_frames=cursor, clips=clips, captions=caption_items(srt),
+    manifest = RenderManifest.model_validate(dict(version=2 if getattr(run, 'pipeline_version', 2)>=3 else 1, output_fps=cfg.remotion_output_fps, duration_frames=cursor, clips=clips, captions=caption_items(srt),
                               words=word_items(srt, durations, run.outputs['script']) if style in ('dynamic', 'editorial', 'auto') else [], style=style,
                               opening_title=decision['opening_title'], ending_title=decision['ending_title'],
                               intro_beats=decision.get('intro_beats', []), teaser_shots=decision.get('teaser_shots', []),
@@ -277,7 +277,7 @@ def _render_production(run, project, folder, images, audios, durations, srt, che
     args += ['-filter_complex', ';'.join(filters), '-map', '0:v', '-map', '[a]']
     args += ['-c:v', 'copy', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', 'video.mp4']
     media.command(args, folder, check)
-    report = media.validate_final(folder, srt, check, target=project.duration)
+    report = media.validate_final(folder, srt, check, target=project.duration, expected_fps=manifest['output_fps'])
     if stream:report['streaming_render']={'method':'ordered_cached_frame_ranges','manifest':'visual-parts-complete.json','audio_speed_changed':False}
     if style == 'auto':
         report['content_review'] = {'method': 'reused_sampled_review' if run.outputs.get('_edit_review_source') else 'three_sampled_frames_per_clip', 'source_run': run.outputs.get('_edit_review_source'), 'observations': decision['observations'], 'rationale': decision['rationale'], 'requires_human_review': True}

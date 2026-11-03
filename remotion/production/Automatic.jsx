@@ -4,7 +4,7 @@ import {AutoCaptions} from './AutoCaptions.jsx';
 import {DirectedSegment} from './SceneDesign.jsx';
 import fontFaces from './typography-fonts.mjs';
 import serifFont from './serif-font.mjs';
-import {AbsoluteFill,Sequence,Freeze,OffthreadVideo,Img,staticFile,useCurrentFrame,useVideoConfig,interpolate,Easing,delayRender,continueRender,cancelRender} from 'remotion';
+import {AbsoluteFill,Sequence,Freeze,OffthreadVideo,Img,staticFile,useCurrentFrame,useVideoConfig,interpolate,Easing,delayRender,continueRender,cancelRender} from './timeline.jsx';
 const clamp={extrapolateLeft:'clamp',extrapolateRight:'clamp'};
 const eased={...clamp,easing:Easing.bezier(.16,1,.3,1)};
 const Source=({clip})=>{

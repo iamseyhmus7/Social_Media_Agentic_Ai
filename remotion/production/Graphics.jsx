@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill,Sequence,interpolate,spring,useCurrentFrame,useVideoConfig} from 'remotion';
+import {AbsoluteFill,Sequence,interpolate,spring,useCurrentFrame,useVideoConfig} from './timeline.jsx';
 import {MapFlyover} from './MapFlyover.jsx';
 
 const clamp={extrapolateLeft:'clamp',extrapolateRight:'clamp'};

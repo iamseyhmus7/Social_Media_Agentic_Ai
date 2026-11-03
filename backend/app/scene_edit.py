@@ -28,7 +28,7 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
     compact_brief={k:v for k,v in (run.outputs.get('supervisor') or {}).items() if k not in ('checks','execution_plan')}
     quality=run.outputs.get('_last_quality')
     global_quality=([f for f in (quality or {}).get('findings',[]) if f.get('scene_index') is None] or None) if streaming else quality
-    look_key=digest({'compiler':'scene-v3','brief':compact_brief,'script':run.outputs['script'],
+    look_key=digest({'compiler':'scene-v3-audience-drive','brief':compact_brief,'script':run.outputs['script'],
                      'preferences':preferences,'feedback':run.outputs.get('_feedback'),'quality':global_quality})
     look_path=cache/('look-'+look_key+'.json')
     if look_path.is_file():
@@ -40,7 +40,11 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
             'narration':[s['narration'] for s in run.outputs['script']['scenes']],
             'preferences':preferences,'feedback':run.outputs.get('_feedback'),
             'instruction':'Ortak yaratıcı yönü konuya göre belirle; zorunlu açılış/kapanış başlığı veya estetik dayatma. '
-            'Sahne/çekim/gözlem listesi üretme. Kullanıcı altyazı tercihini uygula.'},
+            'Sahne/çekim/gözlem listesi üretme. Kullanıcı altyazı tercihini uygula. '
+            'Brief editorial_direction açılış/kapanış/somut örnek/tempo niyetlerini ortak creative_direction içine aktar. '
+            'İlk saniyede anlatımla aynı merakı kur; düşük tempolu giriş veya uzun logo kullanma. '
+            'Okunabilir kısa yazı, görünür eylem ve amaçlı ses vurgusunu birlikte yönet; her aracı aynı anda yığma. '
+            'Son görüntü ve ses bitişi açılıştaki vaadi tamamlasın; kapanışı tekrar eden başlıkla uzatma.'},
             max_attempts=2,**({'repair_fields':True,'compact_schema':True} if streaming else {}))
         if streaming:
             from .parallel_work import retry_inference
@@ -57,6 +61,8 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
         ids={s['shot_id'] for s in local_shots}
         seen=[o for o in observations if o['shot_id'] in ids]
         context={'scene_index':scene,'narrative':run.outputs['script']['scenes'][scene],
+            'editorial_direction':compact_brief.get('editorial_direction',{}),
+            'is_opening':scene==0,'is_closing':scene==len(durations)-1,
             'creative_direction':look,'frame_budget':budgets[scene],
             'sources':[{'shot_id':s['shot_id'],'purpose':s.get('purpose',''),
                 'expected_action':s.get('expected_action',''),'available_frames':available[s['shot_id']]} for s in local_shots],
@@ -79,7 +85,21 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
             'template ile konuya uygun yön seç; şablon veya efekt kotası yok. object_3d yalnız cube/sphere/torus/icosahedron '
             'geometrilerini sembolik açıklama için ekler; gerçek kişi, yapı veya ürün modeli üretmez. '
             '3D render maliyetini artırır, yalnız içerik gerektiriyorsa kullan; varsayılan null. '
-            'Şablon title alanına uygulanır; grafik işareti aktifken klip başlığı gizlenir.'}
+            'critical_questions ve attention_allocation kritik açıklamanın neyi görünür kılması gerektiğini belirtir; '
+            'bu bölümde mekanizma/bağlantıyı anlaşılır göster, dekoratif görüntüyle geçiştirme. '
+            'Sahnelerin kaynak bütçeleri ölçülmüş ses süresidir; birbirine eşitleme. '
+            'Açılışta ilk kareden anlaşılır eylem ve narration ile aynı vaadi taşıyan kısa yazı kur. '
+            'sound_cues ile seslendirmeyi örtme; gerekli vurguyu kısa tut veya sessizliği seç. '
+            'Kaynak görüntüde eksik ayrıntıyı efektle olgusal kanıta dönüştürme; miktar ve ölçek ilişkisini koru. '
+            'Konu dışı hareket yerine anlatımın yeni bilgisine uygun çekim/grafik değişimi seç. '
+            'Kapanışta yeni sonuç/eylemi destekle; yeni boş başlık, uzun fade veya tekrar ekleme. '
+            'Şablon title alanına uygulanır; grafik işareti aktifken klip başlığı gizlenir. '
+            'effects color_grade/glow/vignette görüntüye uygulanır; effect_strength 0–1. '
+            'motion_blur yalnız anlamlı hızlı hareketlerde; maliyetlidir, altyazıyı bulanıklaştırmaz. '
+            'Aynı segmentte effects ve motion_blur birlikte kullanılamaz; içerik için uygun olanı seç veya farklı segmentlere uygula. '
+            'lottie_asset pulse_ring dikkati yönlendirir, flow_arrow süreç/değişim gösterir; tarihsel kanıt değildir. '
+            'annotation underline/circle/highlight yalnız kısa title vurgusudur; annotation_text ile title içinden kısa bir kelime seç. '
+            'wipe/flip/clock_wipe resmî geçişlerdir. Araçları içerik gerekçesiyle seç; her sahneye efekt eklemek zorunlu değil.'}
         context['capabilities']=SCENE_CAPABILITIES
         if scene==0 and run.outputs.get('_config',{}).get('engagement_policy',0):
             context['opening_hook']=run.outputs['script'].get('hook','')

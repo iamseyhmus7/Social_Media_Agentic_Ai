@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill,interpolate,useCurrentFrame,Easing} from 'remotion';
+import {AbsoluteFill,interpolate,useCurrentFrame,Easing} from './timeline.jsx';
 import geography from './geography.mjs';
 
 const clamp={extrapolateLeft:'clamp',extrapolateRight:'clamp'};
