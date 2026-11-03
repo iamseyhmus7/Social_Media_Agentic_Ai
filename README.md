@@ -16,7 +16,7 @@ Bağlı model dosyaları, bellek eşlemesiyle oluşabilecek yavaş küçük okum
 
 `waiting_remote` durumunda worker kilidi bırakılır. Uzak iş kimliği, sürümü, girdi özeti ve denemeleri veritabanında saklanır; belirsiz gönderim otomatik yinelenmez. Hesap başına tek uzak iş çalışır. İptal edilen uzak iş sağlayıcıda sona erene kadar hesap yuvasını korur; geç gelen sonuçlar montaja alınmaz. Başarılı çekimler korunur ve eksik çekimler en fazla bir kez tekrar üretilir. Kota veya hata durumunda ücretli sağlayıcıya ya da sessiz fotoğraf montajına geçilmez.
 
-Gerçek anlatım hedef süreden ±2 saniye sapabilir ve 30–60 saniye içinde olmalıdır. Bir metin revizyonundan sonra hedef sağlanmazsa GPU işi başlamaz. Ses kesilmez veya hızlandırılmaz. Video Editörü yalnızca doğrulanan JSON kararları verir. Remotion görüntü, başlık ve altyazıları işler; FFmpeg orijinal hızdaki anlatımı ve isteğe bağlı müziği karıştırır. Yeni Remotion üretimlerinde çıktı varsayılan 1080×1920/60 FPS (REMOTION_OUTPUT_FPS=30 ile 30 FPS) H.264/AAC olarak özel medya alanına yazılır ve tamamen çözümlenerek denetlenir.
+Gerçek anlatım hedef süreden ±2 saniye sapabilir ve 30–60 saniye içinde olmalıdır. Kabul edilen üst sınır en fazla 0,5 saniye aşılırsa, gereken hız değişimi %1’i geçmemek koşuluyla ses yerelde perde korunarak uyarlanır; kelimeler kesilmez ve ElevenLabs yeniden çağrılmaz. Daha büyük uyumsuzluklar sınırlı metin/ses düzeltme akışına gider; süre doğrulanmadan GPU işi başlamaz. Video Editörü doğrulanan JSON kararları verir. Remotion görüntü, başlık ve altyazıları işler; FFmpeg anlatımı ve isteğe bağlı müziği karıştırır. Yeni Remotion üretimlerinde çıktı varsayılan 1080×1920/60 FPS (REMOTION_OUTPUT_FPS=30 ile 30 FPS) H.264/AAC olarak özel medya alanına yazılır ve tamamen çözümlenerek denetlenir.
 
 Ana sayfadaki örnekler ve etkileşimli demo önceden hazırlanmıştır; gerçek Kaggle üretimi olarak sunulmaz. Gerçek üretim kayıtlı çalışma alanından başlatılır. Teknik kontrol içerik doğruluğu/estetik onayı değildir; son video kullanıcı incelemesini bekler.
 
@@ -26,7 +26,7 @@ Ana sayfadaki örnekler ve etkileşimli demo önceden hazırlanmıştır; gerçe
 
 - Çalışan React arayüzü: genel bakış, agent akışı, sahne stüdyosu, kütüphane, takvim, marka/kanal/kullanıcı ayarları.
 - FastAPI: Argon2 parolalar, HttpOnly oturum, CSRF, kullanıcı sahiplik kontrolleri, özel medya erişimi, sürüm/onay/yayın kayıtları, SSE.
-- LangGraph: doğrulanan görev çıktıları, kalıcı aşama kayıtları, bir otomatik kalite revizyonu, iptal/yeniden deneme/kota bekleme.
+- LangGraph: doğrulanan görev çıktıları, kalıcı aşama kayıtları, aşamaya göre sınırlı düzeltme turları, iptal/yeniden deneme/kota bekleme.
 - SQLite + yerel worker geliştirme modu; PostgreSQL + Valkey + Celery Linux dağıtımı.
 - Gerçek medya adaptörleri vardır; Whisper ağırlıkları ve Evren/Cloudflare/ElevenLabs bilgileri ayrıca kurulmalıdır. Demo görseller gerçek üretim sonucu değildir.
 - Canlı Evren, YouTube, GPU ve Docker uçtan uca kabulü kimlik bilgileri, model kurulumu ve çalışan Docker motoru olmadan doğrulanmış sayılmaz.
@@ -60,7 +60,7 @@ docker compose logs --tail=50 api worker beat
 docker compose stop
 ```
 
-Türkçe seslendirme ElevenLabs ile üretilir. SSD-1B ve Whisper ağırlıkları ilk kullanımda indirilir; paket kurulması model ağırlıklarının kurulduğu anlamına gelmez. Google OAuth istemcisinin izinli dönüş adresi Docker için `http://localhost:8080/api/v1/youtube/callback` olmalıdır.
+Docker worker Türkçe karakterleri destekleyen DejaVu Sans fontunu, FFmpeg ve ffprobe araçlarını içerir; Windows font yolu gerekmez. ElevenLabs sesi üretir; FFmpeg/ffprobe sesi dönüştürür, süresini ölçer ve montajı denetler. Whisper ağırlıkları, yerel görsel sağlayıcı seçilirse ayrıca SSD-1B ilk kullanımda indirilir; paket kurulması model ağırlıklarının kurulduğu anlamına gelmez. Google OAuth istemcisinin izinli dönüş adresi Docker için `http://localhost:8080/api/v1/youtube/callback` olmalıdır.
 
 PostgreSQL ile testler, her test için ayrı rastgele şema oluşturup sonunda kaldırır; uygulamanın `public` şemasını kullanmaz:
 
@@ -70,6 +70,19 @@ docker compose exec api sh -c 'TEST_DATABASE_URL="$DATABASE_URL" python -m pytes
 
 Eski `data/sahne.db` SQLite dosyası yedek olarak korunur; Docker bunu kullanmaz. `docker compose down -v` veritabanı volume'larını siler; normal durdurma için `docker compose stop` kullan.
 
+### Mevcut Docker kurulumunu güncelleme
+
+Mevcut `.env`, veritabanı ve `data` dizinini koru. Güncellemeden önce PostgreSQL yedeği al; ardından uygulama servislerini güncelle:
+
+```powershell
+git pull --ff-only
+docker compose up -d --build api worker beat web
+docker compose ps
+docker compose exec api python -m backend.app.cli doctor
+```
+
+Bu işlem uygulama imajlarını yeniler; PostgreSQL/Valkey verilerini silmez. Normal yükseltmede `docker compose down -v` kullanma. Bağımlılıklar değiştiğinde yalnız kaynak dosyalarını kopyalamak yeterli değildir; ilgili imaj yeniden oluşturulmalıdır. Yerel SQLite geliştirme kayıtları Docker’ın PostgreSQL veritabanına otomatik taşınmaz; aynı e-posta ile açılan hesaplar bu iki ortamda ayrı kayıtlardır.
+
 ## Yerel geliştirme (Windows, Python 3.12, Node 22)
 
 Komutları proje kökünde çalıştır:
@@ -77,7 +90,8 @@ Komutları proje kökünde çalıştır:
 ```powershell
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r backend/requirements.txt
-Copy-Item .env.example .env
+# Yalnız .env henüz yoksa örnek ayarları kopyala.
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 .venv/Scripts/python.exe -m backend.app.cli init-db
 .venv/Scripts/python.exe -m backend.app.cli create-admin --email yonetici@example.com --name "Yönetici"
 ```
@@ -208,13 +222,18 @@ Rol bazında metin modeli seçimi:
 ```dotenv
 EVREN_MODEL=deepseek-v4.1-flash
 EVREN_MEDIA_MODEL=mimo-v2.6-pro
+EVREN_SUPERVISOR_MODEL=mimo-v2.6-pro
+EVREN_MEDIA_MODEL2=qwen3-vl-30b
 EVREN_AUDIO_INPUT_VERIFIED=false
 EVREN_VIDEO_INPUT_VERIFIED=false
 ```
 
-Supervisor/strateji/senaryo DeepSeek; Seslendirme, Görsel, Video Editörü ve Yayıncı
-rollerinin LLM çağrıları MiMo modeline yönlendirilir. Görsel ve video aşamaları hâlâ
-Cloudflare/FFmpeg araçlarını kullanır; model yönlendirmesi bu araçları kendiliğinden
+Bu örnekte Supervisor MiMo, strateji ve senaryo DeepSeek kullanır. Seslendirme, Görsel
+Tasarımcı, Video Üretim Agentı, Video Editörü ve Kalite kontrolü MiMo’ya; örneklenmiş
+karelerin görsel incelemesi Qwen’e yönlendirilir. Supervisor modeli belirtilmezse
+`EVREN_MODEL`, algı modeli belirtilmezse medya/metin modeli kullanılır. Rol modeli
+yapılandırmayla seçilir. Görselleri Cloudflare, hareketli çekimleri Kaggle, montajı
+Remotion/FFmpeg araçları üretir; model yönlendirmesi bu araçları kendiliğinden
 multimodal agent'a dönüştürmez. Adaptör `image_url`, `input_audio` ve `video_url`
 girdilerini destekler. Xiaomi MiMo dokümanının bir girdiyi desteklemesi, Evren
 geçidinin aynı sözleşmeyi desteklediğini tek başına doğrulamaz.
@@ -244,9 +263,9 @@ pip install -r backend/requirements-media.txt
 
 Windows'ta FFmpeg/ffprobe kur ve SUBTITLE_FONT_FILE için Türkçe destekleyen yerel font dosyası seç; örneğin C:/Windows/Fonts/arialbd.ttf, SUBTITLE_FONT=Arial.
 
-İlk görsel üretimi [SSD-1B](https://huggingface.co/segmind/SSD-1B) ağırlıklarını; ilk altyazı üretimi Whisper small ağırlıklarını indirir. İndirme için internet ve yeterli disk gerekir. 4 GB GTX 1650'de sıralı CPU offload denenir; CUDA bellek hatasında CPU'ya geçilir. Model indirme ve gerçek donanım ölçümü yapılmadan hız sözü verilmez.
+Yerel görsel sağlayıcı seçilirse ilk üretim [SSD-1B](https://huggingface.co/segmind/SSD-1B) ağırlıklarını indirir; Cloudflare modunda bu indirme yapılmaz. İlk altyazı üretimi Whisper small ağırlıklarını indirir. İndirme için internet ve yeterli disk gerekir. 4 GB GTX 1650'de sıralı CPU offload denenir; CUDA bellek hatasında CPU'ya geçilir. Model indirme ve gerçek donanım ölçümü yapılmadan hız sözü verilmez.
 
-Sahneler 512 × 896 üretilir; FFmpeg 1080 × 1920, 30 FPS, H.264/AAC dosyaya ölçekler. Bu, doğal 1080p ayrıntı garantisi değildir. Gerçek WAV süreleri montajı belirler. 30–60 saniye sınırı, ses/siyah sahne ve altyazı uzunluğu kontrolleri uygulanır. Altyazı zamanları ASR tahminidir; son kullanıcı incelemesi zorunludur. Marka adı, rengi ve yüklenen logo kapakta ve videoda kullanılır. İlk üretim öncesi lisanslı müzik dosyası arayüzden veya API üzerinden eklenebilir.
+Kaynak çözünürlüğü ve kare hızı seçilen sağlayıcıya bağlıdır; Kaggle’ın başlangıç profili 480×832/24 FPS’tir. Yeni Remotion üretimleri varsayılan 1080×1920/60 FPS H.264/AAC çıkar; `REMOTION_OUTPUT_FPS=30` ile 30 FPS seçilir. Bu ayarı taşımayan eski üretimler 30 FPS kalır. Çıkışı büyütmek doğal 1080p ayrıntı veya kaynakta olmayan hareket ayrıntısı oluşturmaz. Gerçek WAV süreleri montajı belirler. 30–60 saniye sınırı, ses/siyah sahne ve altyazı uzunluğu kontrolleri uygulanır. Altyazı zamanları ASR tahminidir; son kullanıcı incelemesi zorunludur. Marka adı, rengi ve yüklenen logo kapakta ve videoda kullanılır. İlk üretim öncesi lisanslı müzik dosyası arayüzden veya API üzerinden eklenebilir.
 
 ## YouTube
 
@@ -286,15 +305,19 @@ Testler geçici veritabanı ve kullanıcılarla çalışır. Sağlayıcı/medya 
 
 ## Maliyet ve lisanslar
 
-Ücretli API, SaaS aboneliği veya ücretli UI paketi gerekmez. Elektrik, internet, disk ve donanım maliyetleri vardır; Evren'in kalıcı ücretsiz hizmet ve kota koşulları ayrıca doğrulanmalıdır. YouTube ve Evren dış servislerdir. Yazılımın açık kaynak olması ağırlıkların ve medya çıktılarının lisanslarını aynı yapmaz. Kaynaklar ve dağıtım notları: [LICENSES.md](LICENSES.md).
+Üretim maliyeti seçilen sağlayıcıların kotasına, planına ve kullanımına bağlıdır. Cloudflare ve ElevenLabs çağrıları kota/kredi tüketebilir; ücretsiz kullanım ticari yayın izni anlamına gelmez. Elektrik, internet, disk ve donanım maliyetleri de vardır; Evren'in kalıcı ücretsiz hizmet ve kota koşulları ayrıca doğrulanmalıdır. YouTube ve Evren dış servislerdir. Yazılımın açık kaynak olması ağırlıkların ve medya çıktılarının lisanslarını aynı yapmaz. Kaynaklar ve dağıtım notları: [LICENSES.md](LICENSES.md).
 
 Mimari: [docs/architecture.md](docs/architecture.md). Seçilen görsel hedef: [docs/design-reference.png](docs/design-reference.png).
 
 
-### Senaryo kalite akışı (editorial policy 2)
+## Senaryo kalite akışı (editorial policy 2)
 
 Yeni üretimlerde supervisor, `editorial_direction` içinde ana soru, önem, neden-sonuç odağı,
-sonuç hedefi, kapanış biçimi, sahne sayısı ve kaynak gereksinimini belirler. Uzmanların genel
+sonuç hedefi, kapanış biçimi, sahne sayısı ve kaynak gereksinimini belirler. `critical_questions`
+ile olayın açıklanması gereken sorularını, `attention_allocation` ile hangi bölüme daha
+fazla zaman ayrılacağını tanımlar. Başlangıç planı 5–8 sahne önerir; süreler eşit
+bölünmez. Kritik neden-sonuç açıklaması daha uzun, bağlantı ve kapanış daha kısa olabilir.
+Anlatı sahnesi ile teknik çekim aynı şey değildir; bir sahne birden çok kısa klibe ayrılabilir. Uzmanların genel
 sahne önerileri supervisor planına dayanır; uzman farklı bir sayı önerirse kabulünü supervisor değerlendirir. Önceki üretimlerin kaydedilmiş ayarları korunur.
 
 Yazar yalnız anlatım paragraflarını üretir. Supervisor editörü metni yeniden yazmadan altı
@@ -317,8 +340,11 @@ kullanılmaz. Kaynak metni alınamazsa süreç kaynak doğrulanmış gibi ilerle
 Wikipedia makale metnini getirir; bu bağımsız tarihsel doğrulama değildir. Kaynak kimliği ve
 alıntının gerçekten metinde bulunması kodla, iddiayla anlam uyumu editör modeliyle kontrol edilir.
 
-Arayüzdeki **Yalnız senaryoyu hazırla** seçeneği API'ye `script_only: true` gönderir.
-Tamamlanınca `script_ready` durumuna geçilir; ses, görsel, video ve yayın aşamaları çalıştırılmaz.
+Yeni üretimler arayüzden tam akış olarak başlatılır; ayrı “yalnız senaryo” seçeneği yoktur.
+Önceden `script_ready` durumunda bırakılmış üretimler **Yeniden dene** ile aynı kayıttan
+medya aşamasına devam edebilir. Hata sonrası da tamamlanan geçerli aşamalar korunur;
+plan veya girdi değiştiğinde ilgili kayıt yeniden değerlendirilir. Arayüz metin yazımı,
+Supervisor metin incelemesi, görsel plan hazırlığı ve görsel inceleme durumlarını ayırır.
 
 Editoryal akışta anlatım onayından sonra görsel yönergeler de supervisor LLM tarafından
 incelenir. Miktar, ölçek, eylem ve zaman çelişkilerinde yalnız hedef sahnelerin görsel
@@ -327,3 +353,30 @@ alanları bir kez düzeltilir ve tekrar incelenir; onaylı anlatım korunur. Bu,
 incelemesi değildir. Her sonuç kontrol noktasına kaydedilir. `cta` alanı ayrı slogan
 üretmez; onaylı son sahnenin anlatımını yansıtır. Dış kaynak modu kapalıyken bu inceleme
 LLM bilgisine dayanan tutarlılık kontrolüdür; dış doğrulama yapıldığı iddia edilmez.
+
+## Hedefli video düzenleme
+
+Stüdyodaki geri bildirimi Supervisor mevcut video ve kurgu katmanlarıyla birlikte değerlendirir.
+Örneğin “ilk iki sahnedeki 3D cisimleri kaldır” isteği kurgu katmanına aitse Video Editörü’ne
+iletilir; kaynak görseller ve ses yeniden üretilmez. Kaynak resmin içeriği değişecekse Görsel
+Tasarımcı, kaynak hareket değişecekse Video Üretim Agentı görevlendirilir. Geçerli medya ve
+imzası eşleşen render parçaları yeniden kullanılır; düzenleme kapsamı dışındaki sahneler korunur.
+
+## Remotion kurgu ve render
+
+`@remotion/transitions`, `@remotion/effects`, `@remotion/motion-blur`, `@remotion/lottie`
+ve `@remotion/rough-notation` paketleri 4.0.538 sürümünde kullanılır. Editör model sahneye göre
+geçiş, renk/glow/vignette, kamera hareketi, yerel Lottie animasyonu ve metin vurgusu seçer;
+her sahneye efekt eklemek zorunlu değildir. Motion blur yalnız görüntü/kameraya uygulanır;
+yazı ve altyazı keskin kalır. Bu sürümde piksel efektleri ile motion blur aynı segmentte
+birlikte kullanılamaz; farklı segmentlerde kullanılabilir. Lottie varlıkları kayıtlı yerel
+animasyonlarla sınırlıdır.
+
+Kurgu kararlarının zaman tabanı 30 FPS’tir; renderer bunları seçilen 30/60 FPS çıkışa çevirir.
+60 FPS, grafik ve kamera animasyonlarını akıcılaştırır; düşük FPS kaynak videoya yeni hareket
+ayrıntısı eklemez. Render sonrası teknik kontroller çözümleme, süre, kare hızı, siyah görüntü,
+sessizlik ve altyazı sınırlarını denetler. İçerik ve estetik için son kullanıcı incelemesi gerekir.
+Ayrıntılar: [Remotion kurgu araçları](docs/remotion-editing.md).
+
+Geçici `.test` çıktıları, medya, önbellekler ve gizli `.env` dosyası Git dışında tutulur;
+`backend/tests` altındaki kaynak testler sürüm kontrolüne dahildir.
