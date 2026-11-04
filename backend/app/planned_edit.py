@@ -177,7 +177,11 @@ def repair_cues(decision, durations, sources, preferences, llm, check, *, bounde
                 repaired=SceneCueRepair.model_validate(llm.generate(SceneCueRepair,'Video Editörü / İşaret düzeltme',{
                     'scene_index':scene,'scene_budget':budget,'error':str(exc),'cues':local,'sources':sources,
                     'preferences':preferences,'instruction':'Yalnız bu sahnenin grafik/ses işaretlerini düzelt. '
-                    'Kesme planını, diğer sahneleri ve yaratıcı kararları koru.'}, **({'max_attempts':2} if bounded else {}))).model_dump()
+                    'Kesme planını, diğer sahneleri ve yaratıcı kararları koru. '
+                    'Yanıt gerçek graphics ve sound_cues dizilerini içeren JSON nesnesidir; '
+                    'type, properties, required veya $defs içeren şemayı kopyalama. '
+                    'Mevcut işaretleri temel alıp yalnız bildirilen hatayı düzelt.'},
+                    **({'max_attempts':2,'repair_fields':True,'compact_schema':True} if bounded else {}))).model_dump()
                 if any(c['scene_index']!=scene for cues in repaired.values() for c in cues):
                     raise RuntimeError('İşaret düzeltmesi başka sahneye yayılamaz.')
                 for name in ('graphics','sound_cues'):
