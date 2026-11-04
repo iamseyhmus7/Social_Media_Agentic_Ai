@@ -530,7 +530,7 @@ def answer_feedback(project_id: str, feedback_id: str, data: FeedbackAnswer, use
         Feedback.user_id==user.id).with_for_update())
     if not item:
         raise HTTPException(404, 'Geri bildirim bulunamadı.')
-    if item.status not in ('needs_clarification', 'waiting_quota', 'failed'):
+    if item.status != 'needs_clarification' or not item.decision.get('clarification'):
         raise HTTPException(409, 'Bu geri bildirim yanıt beklemiyor.')
     source_check(db, project, user, item.source_run_id)
     item.answer, item.status, item.error = data.answer, 'queued', None

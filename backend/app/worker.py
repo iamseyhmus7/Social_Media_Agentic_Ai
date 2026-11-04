@@ -70,6 +70,9 @@ def tick():
         purge_pending_content()
         from .db import Feedback
         with DB() as db:
+            from .feedback import resume_provider_waits
+            resume_provider_waits(db)
+            db.commit()
             pending_feedback = db.scalar(select(Feedback.id).where(Feedback.status=='queued').order_by(Feedback.created))
         if pending_feedback:
             from .feedback import process_feedback

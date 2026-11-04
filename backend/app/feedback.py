@@ -2,8 +2,8 @@
 from uuid import uuid4
 from sqlalchemy import select
 from fastapi import HTTPException
-from .db import DB, Feedback, Run, Project, User
-from .providers import Evren, QuotaExceeded
+from .db import DB, Feedback, Run, Project, User, now
+from .providers import Evren, QuotaExceeded, TransientProviderError
 from .schemas import FeedbackDecision, Reedit
 from .config import use_run_settings, snapshot_settings
 from .orchestration import descendants
@@ -32,7 +32,20 @@ def edit_context(source):
 
 
 def serialize(item):
-    return {k: getattr(item, k) for k in ('id', 'status', 'prompt', 'answer', 'decision', 'run_id', 'error', 'source_run_id')}
+    result = {k: getattr(item, k) for k in ('id', 'status', 'prompt', 'answer', 'decision', 'run_id', 'error', 'source_run_id')}
+    result['decision'] = {k: v for k, v in item.decision.items() if not k.startswith('_')}
+    return result
+
+
+def resume_provider_waits(db):
+    """Persist provider backoff without making an outage a clarification question."""
+    for item in db.scalars(select(Feedback).where(Feedback.status == 'waiting_provider').with_for_update()):
+        waiting = item.decision.get('_provider_wait', {})
+        if waiting.get('deadline', 0) <= now():
+            item.status = 'failed'
+            item.error = 'Model hizmeti için otomatik bekleme süresi doldu. Değişiklik isteği uygulanamadı; mevcut video korundu.'
+        elif waiting.get('retry_at', float('inf')) <= now():
+            item.status = 'queued'
 
 
 def source_check(db, project, user, source_id):
@@ -59,6 +72,12 @@ def create_feedback(db, project, user, data):
     source_check(db, project, user, data.run_id)
     if db.scalar(select(Feedback.id).where(Feedback.user_id==user.id, Feedback.status.in_(['queued', 'waiting_quota']))):
         raise HTTPException(409, 'Önceki geri bildirimin değerlendirilmesini bekle.')
+    # A new command replaces an older suspended interpretation of this video.
+    # It must never become an answer to that request or create duplicate revisions.
+    for pending in db.scalars(select(Feedback).where(Feedback.user_id == user.id,
+            Feedback.source_run_id == data.run_id,
+            Feedback.status.in_(['waiting_provider', 'needs_clarification'])).with_for_update()):
+        pending.status = 'superseded'
     item = Feedback(id=str(uuid4()), user_id=user.id, project_id=project.id,
         source_run_id=data.run_id, request_id=data.request_id, prompt=data.prompt)
     db.add(item)
@@ -109,6 +128,7 @@ def process_feedback(feedback_id):
             if item.status != 'queued':
                 return
             item.decision = result
+            item.error = None
             if result['clarification']:
                 item.status = 'needs_clarification'
                 db.commit()
@@ -159,6 +179,17 @@ def process_feedback(feedback_id):
                     outputs.pop(key, None)
             run.outputs, run.pipeline_version = outputs, 3
             item.status, item.run_id = 'applied', run.id
+            db.commit()
+    except TransientProviderError as exc:
+        from .recovery import provider_wait
+        with DB() as db:
+            item = db.get(Feedback, feedback_id)
+            if item.status != 'queued':
+                return
+            waiting = provider_wait(item.decision.get('_provider_wait', {}), 'feedback', exc)
+            item.decision = {**item.decision, '_provider_wait': waiting}
+            item.status = 'waiting_provider' if waiting['automatic'] else 'failed'
+            item.error = 'Model hizmeti geçici olarak kullanılamıyor. İsteğin kaydedildi; değerlendirme otomatik devam edecek.' if waiting['automatic'] else 'Model hizmeti için otomatik bekleme süresi doldu. Mevcut video korundu.'
             db.commit()
     except QuotaExceeded as exc:
         with DB() as db:

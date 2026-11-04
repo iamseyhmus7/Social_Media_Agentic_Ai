@@ -14,7 +14,9 @@ def create_reedit(db, project, user, request, *, commit=True, preserve_editor=Fa
     source = db.get(Run, request.run_id)
     if not source or source.project_id != project.id or source.user_id != user.id:
         raise HTTPException(404, 'Kaynak üretim bulunamadı.')
-    if source.revision != project.revision or source.status in ('queued', 'running', 'waiting_remote', 'waiting_input'):
+    paused_video = (source.status == 'waiting_input' and source.outputs.get('editor', {}).get('video')
+        and not source.outputs.get('clarification', {}).get('question') and not source.active_owner)
+    if source.revision != project.revision or (source.status in ('queued', 'running', 'waiting_remote', 'waiting_input') and not paused_video):
         raise HTTPException(409, 'Yalnızca durdurulmuş veya tamamlanmış güncel sürüm yeniden kurgulanabilir.')
     if source.pipeline_version < 2 or source.outputs.get('motion', {}).get('mode') != 'video':
         raise HTTPException(409, 'Yeniden kurgu için doğrulanmış hareketli klipler gerekli.')
