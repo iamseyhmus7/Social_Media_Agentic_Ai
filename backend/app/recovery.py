@@ -68,7 +68,7 @@ def task_budget(run_id, key, operation):
             db.commit()
             return True
         if operation == 'check' and used >= 3:
-            raise InvalidModelOutput('Bu görev için üç yanıt denemesi kullanıldı; geçerli çıktılar korundu.')
+            raise InvalidModelOutput('Bu görev için üç yanıt denemesi kullanıldı; geçerli çıktılar korundu.', task_key=key)
         if operation == 'consume':
             ledger[key] = used + 1
             run.outputs = {**run.outputs, '_inference_attempts': ledger}

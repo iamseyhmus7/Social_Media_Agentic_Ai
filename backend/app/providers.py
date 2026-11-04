@@ -120,6 +120,10 @@ class ProviderTimeout(TransientProviderError):
 class InvalidModelOutput(ProviderError):
     """A model decision needs correction; validated sibling jobs remain usable."""
 
+    def __init__(self, message, *, task_key=None):
+        super().__init__(message)
+        self.task_key = task_key
+
 
 class QuotaExceeded(ProviderError):
     pass
@@ -325,7 +329,7 @@ class Evren:
                     metric.setdefault('failure_kind', 'invalid_json' if isinstance(exc,json.JSONDecodeError) else 'invalid_fields')
                     if metric.get('finish_reason') == 'length' and max_output_tokens is None:
                         metric['failure_kind'] = 'provider_output_limit'
-                        raise InvalidModelOutput('Evren/model yanıtı sağlayıcının çıktı sınırında kesildi. Uygulama bu çağrıya token sınırı göndermedi; tamamlanmış sahneler korundu.') from None
+                        raise InvalidModelOutput('Evren/model yanıtı sağlayıcının çıktı sınırında kesildi. Uygulama bu çağrıya token sınırı göndermedi; tamamlanmış sahneler korundu.', task_key=task_key) from None
                     if metric.get('finish_reason') == 'length' and max_output_tokens and not token_expanded and (not budget or budget(task_key,'expand')):
                         max_output_tokens = min(8192, max_output_tokens * 2)
                         token_expanded = True
@@ -335,7 +339,7 @@ class Evren:
                     else:
                         metric['validation_errors'] = [{'path':[], 'type':type(exc).__name__}]
                     if attempt == max_attempts-1:
-                        raise InvalidModelOutput(f'Model {"üç" if max_attempts==3 else max_attempts} denemede doğrulanabilir görev çıktısı üretmedi ({schema.__name__}); geçerli sahneler korundu.') from None
+                        raise InvalidModelOutput(f'Model {"üç" if max_attempts==3 else max_attempts} denemede doğrulanabilir görev çıktısı üretmedi ({schema.__name__}); geçerli sahneler korundu.', task_key=task_key) from None
                     detail = '; '.join('.'.join(map(str,e['loc']))+': '+e['msg'] for e in exc.errors(include_input=False)[:4])[:700] if isinstance(exc, ValidationError) else ('Veri nesnesi döndür; şemanın kendisini veya markdown döndürme. Geçerli JSON gerekli.')
                     errors = exc.errors(include_input=False) if isinstance(exc, ValidationError) else []
                     if (repair_fields or role != 'Supervisor') and errors and all(e['loc'] and e['loc'][0] in schema.model_fields for e in errors) and isinstance(candidate, dict):

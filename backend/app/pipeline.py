@@ -546,9 +546,10 @@ def execute(run_id):
                 script_ready = bool(completed.outputs.get('script'))
             status = 'script_ready' if script_ready else 'waiting_input'
         elif isinstance(exc,InvalidModelOutput):
-            status='waiting_input'
+            status='failed'
             from .recovery import update
-            update(run_id,'model_output',{'kind':'invalid_output','action':'needs_input','status':'exhausted','remaining':0})
+            update(run_id,'model_output',{'kind':'invalid_output','action':'retry','status':'exhausted','remaining':0,
+                'task_key':getattr(exc,'task_key',None)})
         else:
             status = 'waiting_input' if isinstance(exc, NeedsInput) else 'failed'
         error = None if status == 'script_ready' else str(exc) if isinstance(exc, RuntimeError) else f'Üretim sırasında beklenmeyen hata ({type(exc).__name__}); tamamlanan aşamalar korundu.'

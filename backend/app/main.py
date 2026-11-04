@@ -62,10 +62,11 @@ def owned_run(db, run_id, user, *, lock=False):
 
 
 def retryable_model_review(run):
-    return (run.status == 'waiting_input' and run.stage == 'script'
+    return (run.status == 'waiting_input' and not run.outputs.get('clarification', {}).get('question')
         and (run.outputs.get('_recovery', {}).get('active') == 'model_output'
-            or run.outputs.get('_script_editorial', {}).get('phase') == 'visual_revision_pending')
-        and bool(run.outputs.get('_script_editorial', {}).get('draft')))
+            or (run.stage == 'script'
+                and run.outputs.get('_script_editorial', {}).get('phase') == 'visual_revision_pending'
+                and bool(run.outputs.get('_script_editorial', {}).get('draft')))))
 
 
 def continuable_script(run):
@@ -80,6 +81,9 @@ def run_data(db, run):
     result['approved'] = youtube.valid_approval(db, run)
     result['pipeline_version'] = run.pipeline_version
     result['can_retry'] = retryable_model_review(run)
+    # Older workers used waiting_input for technical failures without a question.
+    if result['can_retry'] and run.outputs.get('_recovery', {}).get('active') == 'model_output':
+        result['status'] = 'failed'
     result['can_continue'] = continuable_script(run) and run.revision == db.get(Project, run.project_id).revision
     editorial = run.outputs.get('_script_editorial', {})
     labels = {'writing':'Senaryo yazılıyor', 'text_repair':'Senaryo metni düzeltiliyor',
@@ -433,10 +437,16 @@ def retry_run(run_id: str, user=Depends(current_user), db: DBSession = Depends(g
             editorial = {**editorial, 'visual_review_window_start':len(editorial.get('visual_reviews', [])),
                 'phase':'visual_repair' if not editorial.get('visual_repair_done') else 'visual_review'}
             run.outputs = {**run.outputs, '_script_editorial':editorial}
-    if review_retry and run.outputs.get('_recovery', {}).get('active') == 'model_output':
+    if run.outputs.get('_recovery', {}).get('active') == 'model_output':
+        ledger = dict(run.outputs.get('_inference_attempts', {}))
+        task_key = run.outputs.get('_recovery', {}).get('model_output', {}).get('task_key')
+        # Legacy failures did not record a task key. Reopen exhausted tasks only.
+        keys = [task_key] if task_key else [key for key, used in ledger.items() if used >= 3]
+        for key in keys:
+            ledger.pop(key, None)
         recovery = {**run.outputs.get('_recovery', {}), 'active':None,
-            'model_output':{'kind':'invalid_output','status':'repairing','action':'retry_review'}}
-        run.outputs = {**run.outputs, '_recovery':recovery}
+            'model_output':{'kind':'invalid_output','status':'repairing','action':'retry'}}
+        run.outputs = {**run.outputs, '_recovery':recovery, '_inference_attempts':ledger}
     run.status, run.error, run.cancel_requested, run.active_owner = 'queued', None, False, user.id
     if '_provider_wait' in run.outputs:
         # Only an explicit user retry starts a new outage tracking window.
@@ -546,6 +556,8 @@ def answer_run(run_id: str, data: FeedbackAnswer, user=Depends(current_user), db
     if run.status != 'waiting_input' or run.revision != project.revision:
         raise HTTPException(409, 'Bu üretim açıklama beklemiyor.')
     question = run.outputs.get('clarification', {}).get('question', '')
+    if not question:
+        raise HTTPException(409, 'Yanıtlanacak bir soru yok. Üretimi yeniden dene.')
     run.outputs = {**run.outputs, '_brief_answer': {'question': question, 'answer': data.answer}}
     run.status, run.active_owner, run.error = 'queued', user.id, None
     db.commit()
