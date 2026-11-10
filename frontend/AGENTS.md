@@ -6,6 +6,34 @@
 
 # Prototype Instructions
 
+2026-11-06 latest diagram request: The authenticated agent diagram is a live
+production view. Show the actual function, counts, wait reason and retry timing
+on the corresponding agent. Use a branching responsive layout, with animation
+only on real active work and data transfer. Provider waits are paused/amber,
+never a fake working animation. Preserve the surrounding workspace and distinguish
+data dependencies from concurrent execution. All specialists use this same view.
+
+2026-11-06 latest user direction: Remove the entire Studio source-image/motion
+control panel and per-image approval interruptions. Use one quality Cloudflare
+model (Klein 9B) without automatic image comparison/repair rounds. Preserve ready
+images; when the free budget is insufficient, discover relevant open-license
+stock with recorded attribution. Music selection is an automatic specialist in
+the editor workflow, driven by each script, with speech-triggered ducking. The
+final video review and publication approval remain explicit user actions.
+
+2026-11-06: User requires the normal authenticated General Overview → New video
+flow. Remove the separate three-second test panel, its API and test-only
+artifacts. Do not add another test/benchmark mode to the product. Preserve the
+existing workspace and production agent roles; useful runtime improvements must
+serve the normal user flow.
+
+2026-11-05: Implement source quality controls within the existing studio: optional
+character/location reference uploads, pin accepted references, change one image or
+only one shot's motion, and accept a source that needs human review. Automatic
+production stays the default. Do not add mandatory comparison/approval steps or
+advertising/product/logo features. Cloudflare models share one daily account quota;
+show the application estimate as an estimate, excluding other applications' usage.
+
 2026-10-31 latest instruction: User rejected both redesign attempts and cancelled the design update. Keep the original authenticated workspace. Remove the newly introduced redesign code/files; do not resume design changes without a new user request. Docker must remain unchanged.
 
 
@@ -70,3 +98,17 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 2026-10-27 latest user authorization: Remove old independent Remotion videos and their example code/assets/tools. Preserve the Adana Taşköprü application project and all its media. This supersedes prior instructions to retain independent examples. Production renderer and legacy application-run compatibility remain necessary.
 2026-11-04: The existing-video feedback composer accepts change commands, not production retries. A failed/provider-waiting feedback must keep the change composer available and must never route text to /runs/{id}/answers because the source run has waiting_input. Show an answer form only for an actual clarification question. Temporary provider outages preserve the command for bounded automatic processing; do not add a retry-production button to this panel.
+
+2026-11-06 latest clarification: Keep one clearly directed main production path.
+Route the music branch outside the cards; avoid drawing all redundant dependency
+edges. Live production refresh must continue when the browser pane is unfocused.
+
+2026-11-06 latest interaction: Agent cards open their own input/output inspector inside the diagram section. No separate output page, modal, raw JSON dump, or repeated global output block in Studio. Show actual script text, scene images and source credits, audio players and finished clips; keep incomplete stages honest.
+
+2026-11-06 media catalogs: Stock photos use Pexels, Pixabay, Unsplash and Openverse official APIs. Keep all credentials server-side in ignored .env. Display each selected photo with creator/source credit; Unsplash source photos use API-returned hotlinks while rendered videos and generated assets stay local.
+
+2026-11-06 cadence: Every production must change to a different relevant visual within 4 seconds. Narrative scenes can contain multiple distinct shots. Preserve completed images and voice when adding missing shots to an unfinished plan.
+
+2026-11-11 music selection: Search Openverse and ccMixter for licensed tracks. Show the selected track, source and license, or explain that editing continues without background music when no suitable track is available.
+
+2026-11-06 spoken ending: New productions use engagement policy 2. The script writer includes one topic-specific spoken interaction sentence in the final narration and Supervisor reviews it. Preserve the current video and all older run snapshots; never retrofit a CTA into their script or voice.

@@ -1,5 +1,20 @@
 # Sahne · Agent Destekli Video Üretim Stüdyosu
 
+Yeni görsel kalite profili **Klein 9B, karakter ve mekân referansları,
+GPU öncesi görsel incelemesi ve FastWan 2.2 TI2V 5B** kullanır. Yeni üretimler bu
+profilleri kaydeder; eski üretimler kendi Schnell/LTX ayarlarıyla sürer. Ortak
+Cloudflare kotası, özel CPU hazırlık paketleri, ilk gerçek klip kabulü ve yeni
+API işlemleri için [görsel kalite belgesine](docs/visual-quality.md) bak.
+Aşağıdaki LTX kurulum bilgileri eski üretim profiline aittir.
+
+FastWan profili (`VIDEO_MODEL_PROFILE=fastwan5b_v1`) sabit revizyonlu 5B
+ağırlıklarını T4 için FP16 olarak bir kez özel Kaggle CPU paketine hazırlar.
+GPU işi ağdan model indirmez; mevcut ComfyUI/metin kodlayıcı paketini ve yeni
+Wan 2.2 VAE'yi kullanır. Üç adımlı DMD örneklemesi, tek model ve aynı iş içinde
+çekimler arasında model önbelleği kullanılır. Hatalı veya sayısal olarak geçersiz
+ilk çekimde kalan işler durur; hazır dosyalar korunur. Bu profilin gerçek T4
+süresi ve görsel kalitesi üretim çıktısı üzerinden doğrulanmalıdır.
+
 FastAPI + React/TypeScript ile çok kullanıcılı yerel pilot. Supervisor ve yedi uzman rol; Evren, Cloudflare referans görselleri, ElevenLabs anlatımı, Kaggle I2V ve Remotion–FFmpeg ile dikey video hazırlar. YouTube'a yayın **güncel sürümün kullanıcı onayını** gerektirir. Agent tanımları `shared/agents.json` dosyasında ortaktır; eski üretimler önceki yedi rollü akışı korur.
 
 ## Otonom video üretimi
@@ -380,3 +395,25 @@ Ayrıntılar: [Remotion kurgu araçları](docs/remotion-editing.md).
 
 Geçici `.test` çıktıları, medya, önbellekler ve gizli `.env` dosyası Git dışında tutulur;
 `backend/tests` altındaki kaynak testler sürüm kontrolüne dahildir.
+
+Stok fotoğraf araması `.env` içindeki `PEXELS_API_KEY`, `PIXABAY_API_KEY` ve
+`UNSPLASH_ACCESS_KEY` ile resmi API'lere bağlanır. Unsplash secret ve uygulama
+kimliği yalnız sunucuda tutulur; aramada access key kullanılır. Openverse anonim
+API ile çalışır; isteğe bağlı `OPENVERSE_CLIENT_ID` / `OPENVERSE_CLIENT_SECRET`
+çifti girilirse OAuth erişim belirteci otomatik yenilenir. Bu kimlik bilgileri
+üretim çıktısına veya tarayıcıya aktarılmaz. Katalog sorguları paralel yapılır;
+başarılı yanıtlar 24 saat önbellekte tutulur. Kaynak ve lisans bilgileri seçilen
+görselle saklanır; Unsplash görselleri arayüzde API bağlantısıyla gösterilir ve
+seçildiğinde indirme bildirimi gönderilir.
+
+Müzik Seçici, senaryoya göre Openverse ve ccMixter'dan lisanslı enstrümantal
+kayıt arar. Kaggle çalışırken müzik seçilebilir ve kaynakları doğrulanmış
+sahnelerin kurgusu başlayabilir. Uygun kayıt indirilemezse kurgu konuşma ve
+efektlerle devam eder.
+
+Yeni videoların `engagement_policy=2` profili, konuya özgü tek bir sesli etkileşim
+cümlesini son anlatıma ekler. Senaryo Yazarı yazar, Supervisor uygunluğunu inceler;
+seslendirme aynı anlatıcıyla son sahnenin parçası olarak okur. Eski üretimler kendi
+kayıtlı politikasını korur. Her görsel ekranda en fazla dört saniye kalır; uzun
+anlatım bölümleri farklı, ilgili çekimlere ayrılır. Kaynak kliplerin geçiş payı
+son videoda bu dört saniyelik görsel süresine eklenmez.
