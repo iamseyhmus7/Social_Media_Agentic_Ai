@@ -32,6 +32,13 @@ SPOKEN_STANDARD = (
     'Anlatı biçimini konuya göre seç; her videoya aynı örneği, gerilimi veya kapanışı dayatma.'
 )
 
+def spoken_standard_for(policy=0):
+    if policy<2:return SPOKEN_STANDARD
+    return SPOKEN_STANDARD.replace(
+        'Son cümlede konunun kendisine ait somut karşılığı söyle; içeriğin neyi gösterdiğini yorumlayarak bitirme.',
+        'Önce konunun somut sonucunu ver; ardından son cümlede konuya özel sesli etkileşim çağrısını yap.')
+
+
 AUTHORITY = (
     'Kullanıcının açık isteğini ve zorunlu üretim kurallarını uygula. Ortak üretim planını '
     'editorial_direction ve creative_brief üzerinden kullan. Eksik neden, yanıltıcı varsayım veya '
@@ -285,13 +292,14 @@ def normalized(text):
 
 def generate_editorial_script_v2(llm, schema, context, instructions, *, progress=None, save=None):
     """Persist each expensive result; a judge critiques, the writer repairs, code merges."""
+    standard=spoken_standard_for(context.get('engagement_policy',0))
     direction = EditorialDirection.model_validate(context['creative_brief']['editorial_direction'])
     knowledge_only = context.get('story_research', {}).get('verification_scope') == 'model_knowledge_only'
     require_evidence = direction.evidence_required and not knowledge_only
     sources = {s['id']: s for s in context.get('story_research', {}).get('sources', []) if s.get('text') and s.get('id')}
     if require_evidence and not sources:
         raise ProviderError('Olgusal anlatım için okunmuş kaynak metni bulunamadı. Kaynak araştırması tamamlanmadan senaryo üretilmedi.')
-    fingerprint = hashlib.sha256(json.dumps([2, 'editorial_precision_v5', SPOKEN_STANDARD, context, instructions], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps([2, 'editorial_precision_v5', standard, context, instructions], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     audit = dict(progress or {}) if (progress or {}).get('fingerprint') == fingerprint else {}
     audit.update(version=2, fingerprint=fingerprint)
 
@@ -306,6 +314,9 @@ def generate_editorial_script_v2(llm, schema, context, instructions, *, progress
             text = normalized(' '.join(b.narration for b in self.beats))
             if not text.startswith(self.hook):
                 raise ValueError('Hook, seslendirilecek anlatımın başında bulunmalı.')
+            if context.get('engagement_policy',0)>=2:
+                from .engagement import validate_closing
+                validate_closing(self.beats[-1].narration)
             # Tone, repetition, payoff and plan differences are judged by the supervisor LLM.
             if require_evidence and len(self.facts) < 2:
                 raise ValueError('En az iki temel iddia okunmuş kaynak metniyle desteklenmeli.')
@@ -317,7 +328,7 @@ def generate_editorial_script_v2(llm, schema, context, instructions, *, progress
                     raise ValueError('Kaynak kimliği ve alıntı gerçekten alınan metinle eşleşmeli.')
             return self
 
-    writing = {**context, 'spoken_standard': SPOKEN_STANDARD, 'authority': AUTHORITY,
+    writing = {**context, 'spoken_standard': standard, 'authority': AUTHORITY,
         'knowledge_policy': MODEL_KNOWLEDGE if knowledge_only else 'Olgusal iddiaları alınmış kaynak metniyle karşılaştır.',
         'instruction': f'Görsellerden bağımsız, birleştirildiğinde kesintisiz duyulan {direction.scene_count} anlatım paragrafını hedefle. '
         'Gerekirse desteklenen sınırlar içinde farklı paragraf sayısı öner; onayı supervisora bırak. '
@@ -377,12 +388,13 @@ def generate_editorial_script_v2(llm, schema, context, instructions, *, progress
         persist(phase='text_review')
         verdict = llm.generate(SupervisorVerdict, 'Supervisor / Senaryo editörü', {
             **context, 'creative_brief':reviewed_brief(),
-            'authority':AUTHORITY, 'spoken_standard':SPOKEN_STANDARD, 'draft':draft,
+            'authority':AUTHORITY, 'spoken_standard':standard, 'draft':draft,
+            'mandatory_engagement':context.get('mandatory_engagement',''),
             'spoken_text':' '.join(beat['narration'] for beat in draft['beats']),
             'answer_scope':'Cevabı yalnız beats[].narration ve bunların birleşimi spoken_text içinde ara. Plan, strateji, facts ve yazarın denetim notları seslendirme değildir.',
             'previous_review':reviews[-1] if reviews else None,
             'knowledge_policy': MODEL_KNOWLEDGE if knowledge_only else 'Kaynak alıntılarıyla iddia anlamını karşılaştır.',
-            'instruction':'Yalnız bağımsız değerlendirme yap; metni yeniden yazma ve otomatik övgü verme. '
+            'instruction':'Zorunlu etkileşim kuralı varsa kapanışın konuya özel, doğal ve tek ana eylem içermesini de denetle. Yalnız bağımsız değerlendirme yap; metni yeniden yazma ve otomatik övgü verme. '
             'Kararı decision=approve/revise/cancel ile SEN ver; reason gerekçeni açıklasın. '
             'Küçük ifade, noktalama, üslup ve uygulanabilir sahne sayısı farklarını minor olarak not et; anlam ve hedef korunuyorsa onayla. '
             'Konu/ana mesaj değişmesini, yanıltıcı iddiayı, hedef kaybını veya ciddi anlatı kopukluğunu major/critical olarak işaretle; düzeltilmeden onay verme. '
@@ -463,7 +475,9 @@ def generate_editorial_script_v2(llm, schema, context, instructions, *, progress
         if 'format' not in schema.model_fields:
             fields = {'visual_prompt':fields['visual_prompt']}
         scenes.append({**draft['beats'][visual['scene_index']], **fields})
-    value = {'hook':draft['hook'],'scenes':scenes,'cta':draft['beats'][-1]['narration']}
+    from .engagement import closing_cta
+    closing=draft['beats'][-1]['narration']
+    value = {'hook':draft['hook'],'scenes':scenes,'cta':closing_cta(closing) if context.get('engagement_policy',0)>=2 else closing}
     if 'format' in schema.model_fields:
         value.update(format=visuals['format'],continuity=visuals['continuity'])
     return schema.model_validate(value).model_dump(), audit
@@ -473,7 +487,7 @@ def generate_editorial_script(llm, schema, context, instructions):
     """No speech/image/video provider is called here. Return script plus review audit."""
     duration = context.get('duration_seconds', 45)
     target = round(min(59, max(31, duration)) * 2.2)
-    writing = {**context, 'spoken_standard': SPOKEN_STANDARD,
+    writing = {**context, 'spoken_standard': spoken_standard_for(context.get('engagement_policy',0)),
         'instruction': f'Önce görsellerden bağımsız tek bir kesintisiz seslendirme metni yaz. '
         f'Yaklaşık {target} kelime hedefle; kelime doldurmak için tekrar ekleme. '
         'Hook alanını en fazla 8 kelime yaz; anlatıma bu hook ile başla. '
@@ -505,7 +519,7 @@ def generate_editorial_script(llm, schema, context, instructions):
             return self
 
     script = llm.generate(AllocatedScript, 'Senaryo Yazarı / Sahneleme', {
-        **context, 'approved_spoken_draft': draft, 'spoken_standard': SPOKEN_STANDARD,
+        **context, 'approved_spoken_draft': draft, 'spoken_standard': spoken_standard_for(context.get('engagement_policy',0)),
         'instructions': instructions,
         'instruction': 'Onaylı anlatımı yalnız ardışık sahnelere böl. Hiçbir sözcüğü veya noktalama '
         'işaretini değiştirme, ekleme veya çıkarma. Kelime hedefi zaten yazarlık aşamasında '

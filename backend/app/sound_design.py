@@ -1,5 +1,14 @@
-"""Original, deterministic sound design. No stock downloads or voice retiming."""
+"""Speech-triggered ducking and deterministic sound effects."""
 import wave
+
+
+def music_mix_filters(voice, music, duration, *, voice_gain=1, music_gain=.18):
+    """Normalize inputs, then duck the music using the actual narration envelope."""
+    end = max(0,duration-1.2)
+    return [f'{voice}loudnorm=I=-16:TP=-2:LRA=7,aresample=48000,volume={voice_gain},asplit=2[voice][duckvoice]',
+        f'{music}loudnorm=I=-18:TP=-3:LRA=7,aresample=48000,highpass=f=80,lowpass=f=8500,'
+        f'volume={min(.25,max(0,music_gain))},afade=t=in:d=0.12,afade=t=out:st={end}:d=1.2[musicbed]',
+        '[musicbed][duckvoice]sidechaincompress=threshold=0.025:ratio=8:attack=15:release=280:makeup=1[music]']
 
 
 def create_cue_sound_design(duration, cues, target):
@@ -34,10 +43,7 @@ def create_sound_design(duration, cues, target):
     rate = 24000
     t = np.arange(round(duration * rate), dtype=np.float64) / rate
     rng = np.random.default_rng(20261026)
-    # Quiet harmonic bed: slow attack/release leaves the spoken voice in front.
-    edge = np.clip(t / 1.8, 0, 1) * np.clip((duration - t) / 2, 0, 1)
-    breathe = .7 + .3 * np.sin(2 * np.pi * t / 7 - np.pi / 2)
-    audio = edge * breathe * (.013 * np.sin(2*np.pi*130.81*t) + .009*np.sin(2*np.pi*196*t) + .005*np.sin(2*np.pi*261.63*t))
+    audio = np.zeros_like(t)
     for cue in cues:
         relative = t - max(0, cue - .16)
         active = (relative >= 0) & (relative < .42)

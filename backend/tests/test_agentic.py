@@ -85,9 +85,11 @@ def test_invalid_supervisor_dispatch_cannot_skip_dependencies(setup,monkeypatch)
     with pytest.raises(RuntimeError,match='önkoşulları'):agent.supervise(ident)
 
 
-def test_agent_turn_budget_survives_resume(setup,monkeypatch):
+def test_agent_turn_count_survives_resume(setup):
     ident=create_run({'_agent_turns':80})
-    with pytest.raises(RuntimeError,match='bütçesi'):agent.tick(ident)
+    agent.tick(ident)
+    with DB() as db:
+        assert db.get(Run,ident).outputs['_agent_turns']==81
 
 
 def test_source_rejection_during_preview_returns_to_supervisor(setup, monkeypatch):

@@ -60,32 +60,36 @@ def descendants(stages):
         result = expanded
 
 
+def uses_streaming_editor(config):
+    return (config.get('video_execution_policy') == 'planned_v1'
+            and config.get('video_edit_policy') == 'scenes_v3'
+            and config.get('editor_streaming_enabled'))
+
+
 def ensure_agent_budget(run_id):
     """Once-only conservative repair from provably unrefunded legacy calls."""
     from .parallel_work import run_write_lock
     from sqlalchemy import select
     with run_write_lock, DB() as db:
         run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
-        if run.outputs.get('_decision_budget', {}).get('version') == 2:
-            return run.outputs['_decision_budget']
+        record = run.outputs.get('_decision_budget', {})
+        if record.get('version') == 2:
+            return record
+        turns = run.outputs.get('_agent_turns', 0)
+        metrics = run.outputs.get('_model_metrics', [])
         schemas = {'SupervisorDecision', 'ReadySupervisorDecision', 'TimingSupervisorDecision',
                    'CreativeBrief', 'ProductionBrief', 'ExecutionPlan'}
-        metrics = run.outputs.get('_model_metrics', [])
         evidence = [i for i, m in enumerate(metrics) if m.get('role') == 'Supervisor'
                     and m.get('schema') in schemas
                     and (m.get('status') in ('timeout', 'connection_failed')
                          or (m.get('status') == 'service_unavailable'
                              and m.get('http_status') in (500, 502, 503, 504)))]
-        before = run.outputs.get('_agent_turns', 0)
-        credit = min(before, len(evidence))
-        record = {'version': 2, 'legacy_before': before, 'legacy_refunded': credit,
-                  'legacy_after': before-credit, 'legacy_evidence_indices': evidence,
+        credit = min(turns, len(evidence))
+        record = {'version': 2, 'legacy_before': turns, 'legacy_refunded': credit,
+                  'legacy_after': turns-credit, 'legacy_evidence_indices': evidence,
                   'legacy_metrics_hash': hashlib.sha256(json.dumps(metrics, sort_keys=True).encode()).hexdigest(),
                   'transient_refunds': 0}
-        run.outputs = {**run.outputs, '_agent_turns': before-credit, '_decision_budget': record}
-        if credit:
-            db.add(Event(run_id=run_id, stage=run.stage,
-                message=f'Karar bütçesi düzeltildi: kayıtlardan doğrulanan {credit} başarısız servis denemesi iade edildi ({before} → {before-credit}).'))
+        run.outputs = {**run.outputs, '_agent_turns': turns-credit, '_decision_budget': record}
         db.commit()
         return record
 
@@ -108,8 +112,6 @@ def tick(run_id):
         from sqlalchemy import select
         run = db.scalar(select(Run).where(Run.id==run_id).with_for_update())
         count = run.outputs.get('_agent_turns', 0)
-        if count >= settings().agent_max_turns:
-            raise ProviderError('Agent karar bütçesi doldu. Tamamlanan üretim ve araç kayıtları korundu.')
         run.outputs = {**run.outputs, '_agent_turns':count+1}
         db.commit()
 
@@ -143,9 +145,11 @@ def model_supervisor(run):
 
 
 def initial_brief(run_id):
+    from .agent_progress import mark
     run, project, _ = state(run_id)
     if 'supervisor' in run.outputs:
         return
+    mark(run_id,'supervisor','brief','Konu, hedef kitle ve üretim hedefleri belirleniyor')
     full_scope = run.outputs.get('_config', {}).get('supervisor_policy') in ('model_v3', 'model_v4')
     delegated = model_supervisor(run) and not full_scope
     schema = CreativeBrief if delegated else ProductionBrief if optimized(run) else CreativeBrief
@@ -156,8 +160,8 @@ def initial_brief(run_id):
         'Yalnızca konu başlığı verilmesi soru sorma nedeni değildir. Kullanıcı belirtmedikçe estetik, '
         'altın renk, belgesel formatı, CTA veya sabit açılış dayatma. Kurgu yönünü mevcut '
         'editing_capabilities ile uygulanabilir tasarla; unavailable efektleri vaat etme.')
-    from .script_editorial import SPOKEN_STANDARD
-    instruction += ' Anlatım kalite standardı: ' + SPOKEN_STANDARD
+    from .script_editorial import spoken_standard_for
+    instruction += ' Anlatım kalite standardı: ' + spoken_standard_for(run.outputs.get('_config',{}).get('engagement_policy',0))
     production_context = {}
     if run.outputs.get('_config', {}).get('script_editorial_policy', 0) >= 2:
         from .script_editorial import EditorialProductionBrief, EditorialCreativeBrief, AUTHORITY
@@ -188,8 +192,8 @@ def initial_brief(run_id):
         from .script_editorial import MODEL_KNOWLEDGE
         instruction += ' ' + MODEL_KNOWLEDGE + ' evidence_required=false seç, research_query boş yaz; dış araştırma görevi planlama.'
     if run.outputs.get('_config',{}).get('engagement_policy',0):
-        from .engagement import INSTRUCTION
-        instruction += ' Zorunlu üretim kuralı: ' + INSTRUCTION
+        from .engagement import instruction_for
+        instruction += ' Zorunlu üretim kuralı: ' + instruction_for(run.outputs['_config']['engagement_policy'])
     if run.outputs.get('_config', {}).get('supervisor_policy') == 'model_v4':
         production_context = {'audio_backend': {'provider':settings().tts_provider,
             'model':settings().elevenlabs_model if settings().tts_provider=='elevenlabs' else None,
@@ -333,6 +337,8 @@ def stage_fingerprint(run, stage):
 def specialist(run_id, stage):
     """Only this specialist's named production tool can cause effects."""
     from .pipeline import run_stage
+    from .agent_progress import mark,START
+    mark(run_id,stage,'start',START.get(stage,'Kalite kontrolü hazırlanıyor'))
     role = LABELS[stage]
     with DB() as db:
         current = db.get(Run, run_id)
@@ -523,13 +529,17 @@ def invalidate(run_id, stages, *, repair=False, scenes=None, replacement_script=
             {'stages':{k:run.outputs[k] for k in removed if k in run.outputs},'created':now()}]
     if 'visual' in removed:
         outputs.pop('_visual_progress',None)
+    if 'voice' in removed:
+        outputs.pop('_voice_progress',None)
     if run.outputs.get('quality'):
         outputs['_last_quality'] = run.outputs['quality']
     if 'editor' in removed:
+        outputs.pop('_editor_progress',None)
         outputs.pop('_editor_preview', None)
         outputs.pop('_editor_preview_review', None)
     if 'motion' in removed:
         outputs.pop('_motion_plan', None)
+        outputs['_motion_preview_since']=now()
     if 'visual' in stages:
         outputs.pop('_storyboard', None)
     if 'visual' in removed and 'visual' in run.outputs:
@@ -626,6 +636,8 @@ def supervisor_decision(run_id, run, context):
 
 
 def supervise(run_id):
+    from .agent_progress import mark
+    mark(run_id,'supervisor','coordination','Tamamlanan görevler inceleniyor; sıradaki iş seçiliyor')
     from .human_review import enabled, complete
     from .recovery import ensure, repair_voice, initial, update
     ensure(run_id)
@@ -656,6 +668,14 @@ def supervise(run_id):
     ready = eligible(run.outputs)
     report = run.outputs.get('quality', {})
     bad_voice = 'voice' in run.outputs and not voice_valid(run.outputs)
+    # An owned shot-change command has already selected its single repair task.
+    # Dispatch that validated task directly; no model routing round is needed.
+    requested=run.outputs.get('_repair_stages',[])
+    if run.outputs.get('_shot_requests') and len(requested)==1 and requested[0] in ready and not bad_voice:
+        selected=requested[0]
+        mutate(run_id,{'_supervisor_dispatch':{'stage':selected,'fingerprint':stage_fingerprint(run,selected)},
+            'orchestration':{'stage':selected,'action':'dispatch','reason':'İstenen çekim düzeltmesi hazır girdilerle uygulanıyor.','protocol':'shot_change_v1'}})
+        return selected
     if bad_voice and run.outputs.get('_pending_voice_repair'):
         repair_voice(run_id)
         mutate(run_id, {'_pending_voice_repair':False})
@@ -760,6 +780,8 @@ def build_agent_graph():
 
 
 def review_quality(run_id, *, preview=False):
+    from .agent_progress import mark
+    mark(run_id,'editor','quality','Kurgu önizlemesi inceleniyor' if preview else 'Görüntü, ses ve son video kontrolleri yapılıyor')
     """Review actual rendered evidence, separately from the editing decision."""
     import base64
     from . import media

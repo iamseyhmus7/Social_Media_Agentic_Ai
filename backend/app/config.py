@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     supervisor_policy: str = 'model_v4'
     supervisor_timeout_seconds: int = Field(default=180, ge=15, le=600)
     kaggle_motion_profile: str = 'dual_required'
-    engagement_policy: int = 1
+    engagement_policy: int = 2
     script_editorial_policy: int = 2
     video_edit_policy: str = 'scenes_v3'
     editor_parallelism: int = Field(default=3, ge=1, le=4)
@@ -37,7 +37,6 @@ class Settings(BaseSettings):
     editor_call_timeout_seconds: int = Field(default=0, ge=0)
     editor_streaming_enabled: bool = True
     video_review_policy: Literal['technical_only', 'model'] = 'technical_only'
-    agent_max_turns: int = Field(default=80, ge=12, le=160)
     agent_task_max_turns: int = Field(default=12, ge=3, le=24)
     evren_response_timeout_seconds: int = Field(default=1800, ge=120, le=7200)
     evren_audio_input_verified: bool = False
@@ -65,6 +64,21 @@ class Settings(BaseSettings):
     cloudflare_account_id: str = ''
     cloudflare_api_token: str = Field(default='', repr=False)
     cloudflare_image_steps: int = 4
+    visual_policy: Literal['legacy','references_v1'] = 'references_v1'
+    cloudflare_image_model: Literal['schnell','klein','lucid'] = 'klein'
+    image_model_policy: Literal['auto','klein','lucid'] = 'klein'
+    cloudflare_daily_neurons: int = Field(default=10000, ge=1, le=10000)
+    pexels_api_key: str = Field(default='', repr=False)
+    pixabay_api_key: str = Field(default='', repr=False)
+    unsplash_access_key: str = Field(default='', repr=False)
+    unsplash_secret_key: str = Field(default='', repr=False)
+    unsplash_application_id: str = Field(default='', repr=False)
+    openverse_client_id: str = Field(default='', repr=False)
+    openverse_client_secret: str = Field(default='', repr=False)
+    video_model_profile: Literal['ltx096','wan22_q5_v1','fastwan5b_v1'] = 'fastwan5b_v1'
+    live_clip_previews: bool = True
+    wan_runtime_source: str = ''
+    wan_sampling_profile: Literal['standard20','lightning4_v1'] = 'lightning4_v1'
     tts_provider: Literal['elevenlabs'] = 'elevenlabs'
     elevenlabs_api_key: str = Field(default='', repr=False)
     elevenlabs_voice_id: str = ''
@@ -104,7 +118,7 @@ def settings():
 
 def snapshot_settings():
     c = settings()
-    result = {key: getattr(c, key) for key in ('evren_model', 'evren_media_model', 'agent_protocol', 'agent_max_turns', 'agent_task_max_turns', 'evren_audio_input_verified', 'evren_video_input_verified', 'image_provider', 'image_model', 'image_device', 'tts_provider', 'elevenlabs_model', 'elevenlabs_voice_source', 'elevenlabs_voice_id', 'video_provider', 'editor_provider', 'kaggle_username', 'kaggle_runtime_source', 'cloudflare_image_steps')}
+    result = {key: getattr(c, key) for key in ('evren_model', 'evren_media_model', 'agent_protocol', 'agent_task_max_turns', 'evren_audio_input_verified', 'evren_video_input_verified', 'image_provider', 'image_model', 'image_device', 'tts_provider', 'elevenlabs_model', 'elevenlabs_voice_source', 'elevenlabs_voice_id', 'video_provider', 'editor_provider', 'kaggle_username', 'kaggle_runtime_source', 'cloudflare_image_steps')}
     result['elevenlabs_voice_profiles'] = [p.model_dump() for p in c.elevenlabs_voice_profiles]
     result.update(video_execution_policy=c.video_execution_policy, kaggle_motion_profile=c.kaggle_motion_profile, video_edit_policy=c.video_edit_policy, editor_parallelism=c.editor_parallelism, editor_call_timeout_seconds=c.editor_call_timeout_seconds, remotion_render_concurrency=c.remotion_render_concurrency)
     result.update(supervisor_policy=c.supervisor_policy, supervisor_timeout_seconds=c.supervisor_timeout_seconds)
@@ -112,18 +126,30 @@ def snapshot_settings():
     result['remotion_output_fps'] = c.remotion_output_fps
     result['video_review_policy'] = c.video_review_policy
     result['engagement_policy'] = c.engagement_policy
+    result['live_clip_previews'] = c.live_clip_previews
     result['script_editorial_policy'] = c.script_editorial_policy
     result['story_research_enabled'] = c.story_research_enabled
     result['elevenlabs_turkish_only'] = c.elevenlabs_turkish_only
     result['evren_media_model2'] = c.evren_media_model2
     result['evren_supervisor_model'] = c.evren_supervisor_model or c.evren_model
     result.update(elevenlabs_free_voices_only=c.elevenlabs_free_voices_only, elevenlabs_casting_enabled=c.elevenlabs_casting_enabled, elevenlabs_preview_checks=c.elevenlabs_preview_checks)
+    result.update(visual_policy=c.visual_policy, cloudflare_image_model=c.cloudflare_image_model,
+                  video_model_profile=c.video_model_profile, wan_runtime_source=c.wan_runtime_source,
+                  wan_sampling_profile=c.wan_sampling_profile,
+                  image_model_policy=c.image_model_policy)
     return result
 
 
 @contextmanager
 def use_run_settings(snapshot):
     values = dict(snapshot)
+    values.setdefault('visual_policy', 'legacy')
+    values.setdefault('cloudflare_image_model', 'schnell')
+    values.setdefault('image_model_policy', 'auto')
+    values.setdefault('video_model_profile', 'ltx096')
+    values.setdefault('live_clip_previews', False)
+    values.setdefault('wan_runtime_source', '')
+    values.setdefault('wan_sampling_profile', 'standard20')
     values.setdefault('video_execution_policy', 'legacy')
     values.setdefault('supervisor_policy', 'planned_v1')
     values.setdefault('editor_streaming_enabled', False)

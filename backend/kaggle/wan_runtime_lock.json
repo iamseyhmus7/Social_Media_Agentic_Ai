@@ -1,0 +1,20 @@
+{
+  "version": "wan22-q5-v1",
+  "comfy_commit": "7ad7adb38f6cbb6c2b0713d3bd44c3fb2b9c8ebe",
+  "gguf_commit": "6ea2651e7df66d7585f6ffee804b20e92fb38b8a",
+  "gguf_revision": "6c6717459277b9cd1f72579d78a0fd62a79e57dc",
+  "wan21_revision": "123acf1cc74bccbb9bfff8ac1ee72edc08c2341d",
+  "wan22_revision": "ee6f4a40737a995bf5818954cfce6d59443b0f04",
+  "high": "Wan2.2-I2V-A14B-HighNoise-Q5_K_M.gguf",
+  "low": "Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf",
+  "text_encoder": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+  "vae": "wan_2.1_vae.safetensors",
+  "steps": 20,
+  "switch_step": 10,
+  "cfg": 3.5,
+  "shift": 8.0,
+  "width": 480,
+  "height": 832,
+  "fps": 24,
+  "max_seconds": 5
+}

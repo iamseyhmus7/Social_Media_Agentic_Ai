@@ -23,8 +23,10 @@ class State(TypedDict):
 
 
 def checkpoint(run_id, stage, value, *, extra_outputs=None):
-    with DB() as db:
-        run = db.get(Run, run_id)
+    from sqlalchemy import select
+    from .parallel_work import run_write_lock
+    with run_write_lock, DB() as db:
+        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
         run.outputs = {**run.outputs, **(extra_outputs or {}), stage: value}
         if run.outputs.get('_provider_wait',{}).get('stage') == stage:
             from .recovery import initial
@@ -59,6 +61,46 @@ def asset_path(asset_id):
         return media_path(db.get(Asset, asset_id).path)
 
 
+def work_during_motion_wait(run_id, plan, clips, llm_factory, check):
+    from .agent_progress import mark
+    from .parallel_work import bounded_map
+    from .media_library import select_music
+    from .remotion_renderer import render_ready_scenes
+    from logging import getLogger
+
+    run, project, user = read(run_id)
+    folder = workdir(project.id, run.id)
+    progress = run.outputs.get('_agent_progress', {})
+    config = run.outputs.get('_config', {})
+    tasks = []
+
+    def music():
+        mark(run_id,'music','early_music','Senaryo hazır, arka plan müziği seçiliyor',parallel=True)
+        select_music(run,project,folder,llm_factory(),check)
+
+    music_output = run.outputs.get('music', {})
+    if (not music_output or music_output.get('provider')=='original_procedural') and progress.get('music',{}).get('phase') != 'early_deferred':
+        tasks.append(('music', music))
+    from .orchestration import uses_streaming_editor
+    if (clips and run.outputs.get('_edit_style') == 'auto' and uses_streaming_editor(config)
+            and settings().editor_provider == 'remotion'):
+        brand = run.outputs.get('_brand', user.brand)
+        tasks.append(('editor', lambda:render_ready_scenes(run,project,folder,plan,clips,llm_factory(),brand,check)))
+
+    def attempt(item):
+        agent, action = item
+        try:
+            action()
+        except media.Cancelled:
+            raise
+        except Exception as exc:
+            getLogger(__name__).warning('Early %s deferred for run %s (%s)',agent,run_id,type(exc).__name__)
+            mark(run_id,agent,'early_deferred','Hazır çıktılar korundu; kurgu aşamasında devam edilecek',parallel=False)
+
+    if tasks:
+        bounded_map(tasks,attempt,len(tasks),check)
+
+
 def run_stage(run_id, stage, *, preview_only=False):
     cancellation(run_id)
     run, project, user = read(run_id)
@@ -74,6 +116,8 @@ def run_stage(run_id, stage, *, preview_only=False):
         db.add(Event(run_id=run_id, stage=stage, message=LABELS[stage] + ' çalışıyor.'))
         db.commit()
     accepted_plan_updates = {}
+    from .agent_progress import mark, model_task, START
+    mark(run_id,stage,'start',START.get(stage,'Görev yürütülüyor'))
     brand = run.outputs.get('_brand', user.brand)
     context = {'topic': project.topic, 'audience': project.audience, 'tone': project.tone, 'duration_seconds': project.duration, 'brand': brand, 'creative_brief': run.outputs.get('supervisor'), 'feedback': run.outputs.get('_feedback'), 'completed': {k:v for k,v in run.outputs.items() if not k.startswith('_')}}
     if run.outputs.get('_config', {}).get('video_execution_policy') == 'planned_v1':
@@ -88,10 +132,17 @@ def run_stage(run_id, stage, *, preview_only=False):
         class MeteredEvren(Evren):
             def generate(self, *args, **kwargs):
                 from .orchestration import decision_call
+                model_task(run_id,args[0],args[1])
                 return decision_call(run_id, super().generate, *args, **kwargs)
         llm = MeteredEvren()
     else:
         llm = Evren()
+    if stage == 'visual' and run.outputs.get('_config',{}).get('visual_policy') == 'references_v1':
+        from .visual_quality import generate_visual
+        value = generate_visual(run, project, brand, folder, llm, context, check)
+        check()
+        checkpoint(run_id, stage, value)
+        return
     if stage == 'supervisor':
         value = llm.generate(Plan, 'Supervisor', context)
     elif stage == 'strategy':
@@ -128,12 +179,15 @@ def run_stage(run_id, stage, *, preview_only=False):
         automatic = run.outputs.get('_edit_style') == 'auto'
         if automatic:
             context = {**context, 'format_guidance': 'Kullanıcı isteği ve yaratıcı brief için uygun formatı seç: reklam, anlatı, eğitim, belgesel, seyahat, eğlence, açıklayıcı veya other. Türler hazır kurgu şablonu değildir. Tarihsel iddiayı, ürün vaadini veya kaynağı uydurma. Görsel promptlarında basılı metin üretme; metni editör ekler. Geri bildirim varsa istenmeyen sahne değişikliklerinden kaçın.'}
-        from .engagement import engaging_script, INSTRUCTION
+        from .engagement import engaging_script, instruction_for
         script_schema = StoryScript if automatic else Script
         if run.outputs.get('_config',{}).get('engagement_policy',0):
-            script_schema = engaging_script(script_schema)
-            context = {**context, 'mandatory_engagement': INSTRUCTION}
+            script_schema = engaging_script(script_schema,run.outputs['_config']['engagement_policy'])
+            context = {**context, 'mandatory_engagement': instruction_for(run.outputs['_config']['engagement_policy']), **({'engagement_policy':run.outputs['_config']['engagement_policy']} if run.outputs['_config']['engagement_policy']>=2 else {})}
         script_instructions = f'Türkçe konuşma için yaklaşık {round(min(59, max(31, project.duration)) * 2.2)} kelime hedefle. Görsel promptları İngilizce, tutarlı sinematik stilde ve yalnızca 9:16 dikey kadraj için yaz. Sahne başlıkları Türkçe olsun. ' + ('İçeriğe uygun format seç. 30 saniyede 5–6, 45–60 saniyede 7–8 kısa olay adımı oluştur. Hikâyede neden-sonuç, görünür karakter/nesne eylemleri ve anlamlı sonuç olsun. continuity içinde karakterin değişmeyen fiziksel görünüşünü/kıyafetini, mekânı, nesneleri ve görsel dili İngilizce tanımla. Her sahnenin action, state_before ve state_after alanlarını doldur. İlk anlatım doğrudan olayın içine girsin. Zorunlu hook yönergelerini uygula; son sahnede anlamlı kapanış yaz. Otomatik beğeni veya takip çağrısı ekleme.' if automatic else 'Hook ilk sahnenin anlatımında yer alsın. Son sahnede anlamlı kapanış yaz; otomatik beğeni veya takip çağrısı ekleme.')
+        if run.outputs.get('_config',{}).get('engagement_policy',0)>=2:
+            for banned in ('Otomatik beğeni veya takip çağrısı ekleme.','otomatik beğeni veya takip çağrısı ekleme.'):
+                script_instructions=script_instructions.replace(banned,'Kapanışta zorunlu konuya özel sesli etkileşim cümlesini uygula.')
         policy = run.outputs.get('_config', {}).get('script_editorial_policy', 0)
         if policy >= 2 and not run.outputs.get('_previous_script'):
             from .script_editorial import generate_editorial_script_v2
@@ -160,14 +214,19 @@ def run_stage(run_id, stage, *, preview_only=False):
             from .orchestration import mutate
             mutate(run_id, {'_script_editorial': audit})
         else:
-            from .script_editorial import SPOKEN_STANDARD
-            value = llm.generate(script_schema, 'Senaryo Yazarı', {**context, 'spoken_standard': SPOKEN_STANDARD, 'instructions': script_instructions})
+            from .script_editorial import spoken_standard_for
+            value = llm.generate(script_schema, 'Senaryo Yazarı', {**context, 'spoken_standard': spoken_standard_for(run.outputs.get('_config',{}).get('engagement_policy',0)), 'instructions': script_instructions})
         previous, changed = run.outputs.get('_previous_script'), run.outputs.get('_changed_scenes', [])
         if previous and changed:
             if len(value['scenes']) != len(previous['scenes']):
                 raise RuntimeError('Hedefli senaryo revizyonu sahne sayısını korumalı.')
             value['scenes'] = [s if i in changed else previous['scenes'][i] for i,s in enumerate(value['scenes'])]
-            value = (StoryScript if automatic else Script).model_validate(value).model_dump()
+            if run.outputs.get('_config',{}).get('engagement_policy',0)>=2:
+                if 0 not in changed:value['hook']=previous['hook']
+                if len(previous['scenes'])-1 not in changed:value['cta']=previous['cta']
+                value=script_schema.model_validate(value).model_dump()
+            else:
+                value = (StoryScript if automatic else Script).model_validate(value).model_dump()
     elif stage == 'visual':
         images = []
         scenes = run.outputs['script']['scenes']
@@ -189,11 +248,13 @@ def run_stage(run_id, stage, *, preview_only=False):
                     db.commit()
             scenes = [{'visual_prompt': s['reference_prompt']} for s in board['shots']]
         from .orchestration import mutate
-        progress={'completed':0,'total':len(scenes),'unit':'shots' if board else 'scenes','scene_images':{}}
+        progress={'completed':0,'total':len(scenes),'unit':'shots' if board else 'scenes','scene_images':{},'shot_images':{}}
         mutate(run_id,{'_visual_progress':progress})
         def image_ready(index, ident):
             scene_index=board['shots'][index]['scene_index'] if board else index
             progress['scene_images'].setdefault(str(scene_index),ident)
+            if board:
+                progress['shot_images'][board['shots'][index]['shot_id']]=ident
             progress['completed']=index+1
             mutate(run_id,{'_visual_progress':progress})
         for i, scene in enumerate(scenes):
@@ -238,8 +299,15 @@ def run_stage(run_id, stage, *, preview_only=False):
         voice_plan = select_voice(run_id, context, llm, check)
         from .audio_reuse import input_key, reusable_audio
         audios, durations, input_keys = [], [], []
+        from .orchestration import mutate
+        def voice_ready(index):
+            mutate(run_id,{'_voice_progress':{str(i):asset for i,asset in enumerate(audios)}})
+            mark(run_id,'voice','audio_ready',f'{index+1}/{len(run.outputs["script"]["scenes"])} sahnenin seslendirmesi hazır',
+                completed=index+1,total=len(run.outputs['script']['scenes']))
         for i, scene in enumerate(run.outputs['script']['scenes']):
             check()
+            mark(run_id,'voice','audio_check',f'Sahne {i+1}/{len(run.outputs["script"]["scenes"])} ses kaydı hazırlanıyor',
+                completed=len(audios),total=len(run.outputs['script']['scenes']))
             identity=input_key(scene['narration'],settings(),voice_plan)
             input_keys.append(identity)
             reused=reusable_audio(run.outputs,i,identity)
@@ -250,6 +318,7 @@ def run_stage(run_id, stage, *, preview_only=False):
                     verified=source is not None and source.is_file() and file_hash(source)==asset.sha256
                 if verified:
                     audios.append(reused[0]);durations.append(reused[1])
+                    voice_ready(i)
                     continue
             target = folder / (f'voice-{i}-{identity[:16]}.wav' if run.outputs.get('_recovery',{}).get('version') == 1 else f'voice-{i}.wav')
             legacy_identity = hashlib.sha256(json.dumps({'text': scene['narration'], 'provider': settings().tts_provider, 'model': settings().elevenlabs_model, 'voice': voice_plan or settings().elevenlabs_voice_id}, sort_keys=True).encode()).hexdigest()
@@ -258,12 +327,15 @@ def run_stage(run_id, stage, *, preview_only=False):
             if target.is_file() and saved.get('input') in (identity,legacy_identity) and saved.get('sha256') == file_hash(target):
                 duration = saved['duration']
             else:
+                mark(run_id,'voice','narration',f'Sahne {i+1}: Türkçe ses kaydı üretiliyor',
+                    completed=len(audios),total=len(run.outputs['script']['scenes']))
                 duration = media.voice(scene['narration'], target, check, voice_plan=voice_plan)
                 journal.write_text(json.dumps({'input': identity, 'sha256': file_hash(target), 'duration': duration}))
             with DB() as db:
                 asset_id = register(db, run, target, 'audio')
             audios.append(asset_id)
             durations.append(duration)
+            voice_ready(i)
         value = {'audios': audios, 'durations': durations, 'duration': sum(durations), 'provider': settings().tts_provider,
                  'input_keys':input_keys,'reused_count':sum(ident in run.outputs.get('_reuse_voice',{}).get('audios',[]) for ident in audios)}
         value['generated_count']=len(audios)-value['reused_count']
@@ -278,7 +350,7 @@ def run_stage(run_id, stage, *, preview_only=False):
             plan = run.outputs.get('_motion_plan')
             if not plan:
                 plan = run.outputs['visual'].get('storyboard') or create_motion_plan(llm, context, run.outputs['voice']['durations'], [asset_path(i) for i in run.outputs['visual']['images']])
-                if run.pipeline_version>=3 and 'motion' in run.outputs.get('_repair_stages', []) and 'visual' not in run.outputs.get('_repair_stages', []) and all('reference_prompt' in shot for shot in plan['shots']):
+                if run.pipeline_version>=3 and not run.outputs.get('_changed_shots') and 'motion' in run.outputs.get('_repair_stages', []) and 'visual' not in run.outputs.get('_repair_stages', []) and all('reference_prompt' in shot for shot in plan['shots']):
                     from .storyboard import revise_storyboard
                     revised = revise_storyboard(llm, plan, run.outputs['script'], run.outputs['voice']['durations'],
                         run.outputs.get('_changed_scenes', []), run.outputs.get('_feedback', {}), run.outputs.get('_last_quality', {}))
@@ -286,7 +358,9 @@ def run_stage(run_id, stage, *, preview_only=False):
                         refs = {s['shot_id']:s['reference_prompt'] for s in plan['shots']}
                         plan = {'shots': [{**s, 'reference_prompt': refs[s['shot_id']]} for s in revised['shots']]}
                 from .gpu_profile import selected_profile
-                profile = selected_profile()
+                from .motion import refine_requested_motion
+                plan = refine_requested_motion(run,plan,llm)
+                profile = settings().video_model_profile if settings().video_model_profile in ('wan22_q5_v1','fastwan5b_v1') else selected_profile()
                 with DB() as db:
                     current = db.get(Run, run_id)
                     current.outputs = {**current.outputs, '_motion_profile':profile, '_motion_plan': plan, '_motion_engine': ENGINE_REVISION}
@@ -298,14 +372,25 @@ def run_stage(run_id, stage, *, preview_only=False):
                 from .motion import generate_missing_clips
                 if not run.outputs['visual'].get('shot_images'):
                     reference_ids = [run.outputs['visual']['images'][s['scene_index']] for s in plan['shots']]
-                clips = generate_missing_clips(run, folder, plan, reference_ids, check)
+                ready_clips = {}
+                try:
+                    if settings().video_model_profile in ('wan22_q5_v1','fastwan5b_v1'):
+                        clips = generate_missing_clips(run,folder,plan,reference_ids,check,on_ready=ready_clips.update)
+                    else:
+                        clips = generate_missing_clips(run,folder,plan,reference_ids,check)
+                except RemotePending:
+                    work_during_motion_wait(run_id,plan,ready_clips,MeteredEvren,check)
+                    raise
             else:
                 clips = generate_clips(run, folder, plan, [asset_path(i) for i in reference_ids], check)
             with DB() as db:
                 for shot in plan['shots']:
                     item = clips[shot['shot_id']]
                     item['asset_id'] = register(db, run, folder / item['file'], 'clip')
-            value = {'mode': 'video', 'provider': 'kaggle', 'model': 'LTX-Video 2B distilled 0.9.6', 'plan': plan, 'clips': clips, 'content_review': 'Hareket planı ve dosyalar doğrulandı. Görsel tutarlılık ve içerik doğruluğu kullanıcı incelemesini bekler.'}
+            model_name = {'fastwan5b_v1':'FastWan 2.2 TI2V 5B · DMD 3 adım',
+                          'wan22_q5_v1':'Wan2.2-I2V-A14B GGUF Q5_K_M',
+                          'ltx096':'LTX-Video 2B distilled 0.9.6'}[settings().video_model_profile]
+            value = {'mode': 'video', 'provider': 'kaggle', 'model': model_name, 'plan': plan, 'clips': clips, 'content_review': 'Hareket planı ve dosyalar doğrulandı. Görsel tutarlılık ve içerik doğruluğu kullanıcı incelemesini bekler.'}
         else:
             raise RuntimeError('VIDEO_PROVIDER none veya kaggle olmalı.')
     elif stage == 'editor':
@@ -313,8 +398,24 @@ def run_stage(run_id, stage, *, preview_only=False):
         audios = [asset_path(i) for i in run.outputs['voice']['audios']]
         durations = run.outputs['voice']['durations']
         srt = folder / 'captions.srt'
+        mark(run_id,'editor','captions','Ses kaydıyla altyazı zamanları eşleştiriliyor')
         count = media.subtitles(audios, durations, srt, check)
-        music = str(asset_path(project.music_asset)) if project.music_asset else None
+        from .media_library import select_music
+        music_output = run.outputs.get('music', {})
+        selecting_music = not music_output or music_output.get('provider')=='original_procedural'
+        if selecting_music:
+            with DB() as db:
+                current = db.get(Run,run_id)
+                current.stage = 'music'
+                db.commit()
+        track = select_music(run,project,folder,llm,check)
+        music = str(track) if track is not None else None
+        if selecting_music:
+            with DB() as db:
+                current = db.get(Run,run_id)
+                current.stage = 'editor'
+                db.commit()
+        mark(run_id,'editor','edit','Görüntü ve ses kurguya yerleştiriliyor')
         if run.pipeline_version >= 2 and settings().editor_provider == 'remotion':
             from .remotion_renderer import render_production
             report = render_production(run, project, folder, images, audios, durations, srt, check, llm, context, music, brand, preview_only=preview_only)
@@ -353,6 +454,15 @@ def run_stage(run_id, stage, *, preview_only=False):
         if run.outputs.get('_edit_style') == 'auto':
             from .editorial_graphics import brief_sources, append_references
             value['description'] = append_references(value['description'], brief_sources(project.topic))
+        from .media_library import credits
+        with DB() as db:
+            attribution = credits(db.get(Run,run.id).outputs)
+        if attribution:
+            value['description'] = value.get('description','')+'\n\nGörsel ve müzik kaynakları:\n'+attribution
+            for platform in ('instagram','tiktok'):
+                value[platform] = value.get(platform,'')+'\n\n'+attribution
+        license_file = folder/'media-credits.txt'
+        license_file.write_text(attribution or 'Bu üretimde üçüncü taraf açık lisanslı medya kullanılmadı.',encoding='utf-8')
         package = folder / 'share-package.zip'
         metadata = folder / 'publication.json'
         metadata.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -361,6 +471,7 @@ def run_stage(run_id, stage, *, preview_only=False):
             archive.write(asset_path(run.outputs['editor']['subtitle']), 'captions.srt')
             archive.write(asset_path(run.outputs['visual']['cover']), 'cover.png')
             archive.write(metadata, 'publication.json')
+            archive.write(license_file, 'media-credits.txt')
         with DB() as db:
             value['package'] = register(db, run, package, 'package')
     else:
@@ -563,7 +674,7 @@ def execute(run_id):
             log_failure(run_id, diagnostic)
         if status == 'script_ready':
             run.stage = 'script'
-        if status not in ('waiting_remote','waiting_provider'):
+        if status not in ('queued','waiting_remote','waiting_provider'):
             run.active_owner = None
             run.finished = now()
         elif status=='waiting_provider':

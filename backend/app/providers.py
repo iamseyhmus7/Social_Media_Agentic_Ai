@@ -138,6 +138,10 @@ class Evren:
     def model_for(self, role, media_inputs=None):
         if role == PERCEPTION_ROLE:
             return perception_model(self.cfg)
+        if role in ('Görsel Tasarımcı / Açık lisanslı kaynak planı',
+                    'Görsel Tasarımcı / Açık lisanslı kaynak','Görsel Tasarımcı / Kaynak seçimi'):
+            # Search phrases and catalog metadata do not require the media model.
+            return self.cfg.evren_model
         if role.split(' / ')[0] == 'Supervisor':
             return self.cfg.evren_supervisor_model or self.cfg.evren_model
         media_roles = {'Seslendirme', 'Seslendirme Yönetmeni', 'Görsel Tasarımcı', 'Video Üretim Agentı',

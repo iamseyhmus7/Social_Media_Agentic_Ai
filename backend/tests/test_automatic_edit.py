@@ -15,7 +15,43 @@ def test_story_allocation_covers_measured_audio_and_has_distinct_references():
     assert [s['image_index'] for s in plan['shots']] == list(range(len(plan['shots'])))
     for i, duration in enumerate(durations):
         assert sum(s['duration_seconds'] for s in plan['shots'] if s['scene_index'] == i) == pytest.approx(duration)
-    assert all(s['duration_seconds'] <= 4.8 for s in plan['shots'])
+    assert all(s['duration_seconds'] <= 4 for s in plan['shots'])
+
+
+def test_four_second_cadence_adds_only_missing_view_and_preserves_existing_prompts():
+    from backend.app.storyboard import enforce_storyboard_cadence,retime_storyboard
+    board={'visual_identity':'Same father and room.','shots':[
+        {'shot_id':f'shot-{i:03}','scene_index':0,'duration_seconds':4.8,'reference_prompt':f'Existing distinct view {i}.',
+         'motion_prompt':'The man looks at a photograph.','image_index':i} for i in range(2)]}
+    original=deepcopy(board);calls=[]
+    class Director:
+        def generate(self,schema,role,context,**kwargs):
+            calls.append(context['allocation'])
+            return {'shots':[{**slot,'reference_prompt':'Close-up of the family photograph on the table.',
+                'motion_prompt':'The man lowers the photograph.','purpose':'Anının ayrıntısı',
+                'expected_action':'Fotoğrafı indirir.'} for slot in context['allocation']]}
+    result=enforce_storyboard_cadence(Director(),board,{'scenes':[]},[8.4])
+    assert board==original and len(calls)==1 and len(calls[0])==1
+    assert [s['shot_id'] for s in result['shots']]==['shot-000','shot-001','shot-002']
+    assert [s['reference_prompt'] for s in result['shots'][:2]]==[s['reference_prompt'] for s in original['shots']]
+    assert max(s['duration_seconds']-.6 for s in result['shots'])<=4
+    assert enforce_storyboard_cadence(Director(),result,{},[8.4]) is result
+    assert retime_storyboard(original,[8.4]) is None
+
+
+def test_four_second_cadence_caps_edit_weights_and_rejects_fake_cuts():
+    from backend.app.edit_compiler import compile_segments,SceneBudgetError
+    shots=[{'shot_id':f'shot-{i:03}','scene_index':0} for i in range(2)]
+    segments=[{'shot_id':s['shot_id'],'source_in_frame':0,'duration_weight':weight,'transition':'cut','transition_frames':3}
+        for s,weight in zip(shots,[100,1])]
+    result=compile_segments(segments,shots,{s['shot_id']:180 for s in shots},[240])
+    assert [s['frames'] for s in result]==[120,120]
+    with pytest.raises(SceneBudgetError):
+        compile_segments([segments[0],segments[0]],shots,{'shot-000':180},[180])
+    _,plan,available,durations=edit_fixture()
+    plan['segments'][0]['frames']=121
+    with pytest.raises(ValueError,match='4 saniye'):
+        validate_decision(plan,edit_fixture()[0],available,durations)
 
 
 def edit_fixture():

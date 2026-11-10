@@ -1,0 +1,20 @@
+{
+  "version": "fastwan5b-v1",
+  "repository": "FastVideo/FastWan2.2-TI2V-5B-FullAttn-Diffusers",
+  "revision": "3e187042a324f6f5fb68fd22110a78725253de8f",
+  "transformer": "transformer/diffusion_pytorch_model.safetensors",
+  "model": "fastwan5b-fp16.safetensors",
+  "vae": "wan2.2_vae.safetensors",
+  "vae_repository": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+  "vae_revision": "ee6f4a40737a995bf5818954cfce6d59443b0f04",
+  "text_encoder": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+  "core_runtime": "wan22-q5-v1",
+  "steps": 3,
+  "timesteps": [1000, 757, 522],
+  "training_shift": 8.0,
+  "width": 480,
+  "height": 832,
+  "fps": 24,
+  "max_seconds": 5,
+  "license": "Apache-2.0"
+}

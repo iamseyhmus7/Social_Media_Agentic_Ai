@@ -5,6 +5,7 @@
   {"id":"voice","name":"Seslendirme","summary":"Hikâyeye ses verir","input":"Türkçe anlatım ve içerik tonu","output":"Ses dosyaları ve ölçülen süreler","tool":"ElevenLabs veya yapılandırılmış ses sağlayıcısı"},
   {"id":"visual","name":"Görsel Tasarımcı","summary":"Görsel dünyayı oluşturur","input":"Sahneler, marka ve dikey kadraj","output":"Referans görselleri ve kapak","tool":"Cloudflare veya yapılandırılmış görsel sağlayıcısı"},
   {"id":"motion","name":"Video Üretim Agentı","summary":"Kareleri harekete geçirir","input":"Referans kareler, senaryo ve gerçek ses süreleri","output":"Hareket/kamera planı ve doğrulanmış klipler","tool":"Medya metin modeli ve Kaggle I2V"},
-  {"id":"editor","name":"Video Editörü","summary":"Klipleri bir hikâyede buluşturur","input":"Hareketli klipler, anlatım ve altyazılar","output":"Kurgulanmış dikey video ve teknik rapor","tool":"Remotion ve FFmpeg"},
+  {"id":"music","name":"Müzik Seçici","summary":"Hikâyenin ruhuna uygun eşlik seçer","input":"Senaryo, duygusal ton ve süre","output":"Seçilen lisanslı müzik ve kaynak bilgisi","tool":"Openverse ve ccMixter müzik araması"},
+  {"id":"editor","name":"Video Editörü","summary":"Klipleri bir hikâyede buluşturur","input":"Hareketli klipler, anlatım, müzik ve altyazılar","output":"Konuşmada kısılan müzikle kurgulanmış dikey video ve teknik rapor","tool":"Remotion ve FFmpeg"},
   {"id":"publisher","name":"Yayıncı","summary":"Paylaşım paketini hazırlar","input":"Kontrolleri geçen güncel video","output":"Başlık, açıklama ve platform paketi","tool":"Metin modeli ve yayın araçları"}
 ]

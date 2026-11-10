@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from sqlalchemy import select, delete
 from .config import settings
-from .db import Project, Run, Feedback, RemoteJob, Asset, Event, Approval, Publication, User
+from .db import Project, Run, Feedback, RemoteJob, Asset, Event, Approval, Publication, User, VisualReference
 
 
 def purge_pending_content():
@@ -78,6 +78,7 @@ def delete_content(db, user, project_ids):
                 source.rename(destination)
                 moved.append((source, destination))
         for model, predicate in [
+            (VisualReference, VisualReference.project_id.in_(ids)),
             (Feedback, Feedback.project_id.in_(ids)),
             (Approval, Approval.run_id.in_(run_ids)),
             (Publication, Publication.project_id.in_(ids)),

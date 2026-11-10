@@ -34,7 +34,9 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(settings(), 'queue_mode', 'local')
     monkeypatch.setattr(settings(), 'evren_api_key', '')
     monkeypatch.setattr(settings(), 'evren_contract_verified', False)
-    for key in ('youtube_api_key', 'rss_feeds', 'elevenlabs_api_key', 'cloudflare_api_token'):
+    for key in ('youtube_api_key', 'rss_feeds', 'elevenlabs_api_key', 'cloudflare_api_token',
+                'pexels_api_key','pixabay_api_key','unsplash_access_key','unsplash_secret_key',
+                'openverse_client_id','openverse_client_secret'):
         monkeypatch.setattr(settings(), key, '')
     attempts.clear()
     with DB() as db:

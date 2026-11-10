@@ -17,5 +17,18 @@ export function visualProgress(run:Run|null,demo=false){
 
 export function visualCover(run:Run|null,demo=false){
   const id=run?.outputs.visual?.cover||visualProgress(run,demo).images.find(Boolean);
-  return id?run?.assets.find(asset=>asset.id===id)?.url:undefined;
+  return assetUrl(run,id);
+}
+
+export function sourceForAsset(run:Run|null|undefined,id:string|undefined){
+  const visual=run?.outputs.visual;
+  const shot=Object.entries(visual?.shot_images||run?.visual_progress?.shot_images||{}).find(([,asset])=>asset===id)?.[0];
+  return shot?(visual?.generation||run?.visual_progress?.generation)?.[shot]?.source:undefined;
+}
+
+export function assetUrl(run:Run|null|undefined,id:string|undefined){
+  if(!id)return undefined;
+  const source=sourceForAsset(run,id);
+  // Unsplash requires API-provided hotlinks when displaying source photos.
+  return source?.catalog==='unsplash'&&source.preview_url?source.preview_url:run?.assets.find(asset=>asset.id===id)?.url;
 }

@@ -127,7 +127,7 @@ class SceneRenderQueue:
         if receipt.is_file() and output.is_file():
             saved=json.loads(receipt.read_text(encoding='utf-8'))
             if saved.get('sha256')==file_hash(output) and saved.get('range')==[start,end]:
-                editor_progress(getattr(self.run,'id',None),'render',f'{scene}-{part}','rendered','Önceki parça kullanıldı.')
+                editor_progress(getattr(self.run,'id',None),'render',f'{scene}-{part}','rendered','Önceki parça kullanıldı.',asset_path=output)
                 return output
         editor_progress(getattr(self.run,'id',None),'render',f'{scene}-{part}','rendering')
         atomic_json(folder/'manifest.json',manifest)
@@ -138,7 +138,7 @@ class SceneRenderQueue:
                 self.public,output,self.cfg.remotion_browser_executable,'chunk'],folder,self.check)
             self.inspect(output,end-start+1,manifest.get('output_fps',30))
             atomic_json(receipt,{'key':key,'range':[start,end],'sha256':file_hash(output),'scene':scene,'part':part})
-            editor_progress(getattr(self.run,'id',None),'render',f'{scene}-{part}','rendered')
+            editor_progress(getattr(self.run,'id',None),'render',f'{scene}-{part}','rendered',asset_path=output)
             return output
         except Exception as exc:
             editor_progress(getattr(self.run,'id',None),'render',f'{scene}-{part}','retry',

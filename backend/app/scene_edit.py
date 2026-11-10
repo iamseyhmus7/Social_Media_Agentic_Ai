@@ -13,7 +13,7 @@ def atomic_json(path, value):
     temporary.replace(path)
 
 
-def decide(run, folder, shots, durations, available, observations, llm, check, sources, brief, preferences, signature, on_scene=None):
+def decide(run, folder, shots, durations, available, observations, llm, check, sources, brief, preferences, signature, on_scene=None, *, ready_scenes=None):
     from .automatic_edit import scene_frames, validate_decision
     from .editorial_graphics import compile_cues
     from .planned_edit import digest
@@ -83,6 +83,7 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
             'instruction':'Bu sahneyi gerçek kaynak gözlemlerinden kurgula. Her kaynağı reviews içinde kısa gerekçeyle '
             'pass/uncertain/reject değerlendir; gözlemleri tekrar yazma. segments için mevcut shot_id, source_in_frame, '
             'duration_weight ve içerik gerekçeli tasarım seç. Kesin kare sayısını sunucu hesaplar. '
+            'Her parça en fazla 4 saniye olabilir; art arda aynı shot_id kullanma. Sahneyi karşılayacak kadar farklı kaynak seç. '
             'Kaynak eylemi promptta istenmiş diye gerçekleşmiş sayma. Aynı sahnede kal; kaynak süresini aşma. '
             'Bütün kare değerleri 30 FPS zaman tabanındadır. İlk sahnenin ilk geçişi cut olmalı. Geçişte önceki kaynağa ek kare gerekir. '
             'Grafik ve ses işaretleri bu sahneye bağlı, scene_index aynı, start_frame/frames sahne bütçesi içinde olsun. '
@@ -178,9 +179,12 @@ def decide(run, folder, shots, durations, available, observations, llm, check, s
         def completed(scene,value):
             editor_progress(getattr(run,'id',None),'scenes',scene,'ready')
             if on_scene:on_scene(scene,look,value['decision'],value['compiled'])
-        values=settled_map(list(range(len(durations))),scene_call,cfg.editor_parallelism,check,
+        scenes = list(range(len(durations))) if ready_scenes is None else ready_scenes
+        values=settled_map(scenes,scene_call,cfg.editor_parallelism,check,
             on_success=completed,on_error=lambda scene,exc,attempt:editor_progress(getattr(run,'id',None),'scenes',scene,'retry',str(exc)),
             retry_errors=(TransientProviderError,InvalidModelOutput))
+        if ready_scenes is not None:
+            return
         decisions=[v['decision'] for v in values]
         compiled=[segment for v in values for segment in v['compiled']]
         raw={**look,'segments':compiled,

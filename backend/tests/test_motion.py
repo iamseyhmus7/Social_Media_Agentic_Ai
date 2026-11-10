@@ -25,7 +25,7 @@ def test_motion_timing_is_authoritative():
     # Model can choose motion; it cannot change measured audio timing.
     plan = create_motion_plan(LLM(), {}, [9.2, 4.1])
     assert sum(s['duration_seconds'] for s in plan['shots']) == pytest.approx(13.3)
-    assert max(s['duration_seconds'] for s in plan['shots']) <= 5
+    assert max(s['duration_seconds'] for s in plan['shots']) <= 4
     assert plan['shots'][0]['scene_index'] == 0
     assert plan['shots'][-1]['scene_index'] == 1
 

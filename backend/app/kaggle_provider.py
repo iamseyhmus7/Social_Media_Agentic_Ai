@@ -77,6 +77,10 @@ class KaggleGateway:
                     pass
             raise safe_error(exc) from None
 
+    def sync_logs(self, job, folder, status):
+        from .kaggle_logs import sync_logs
+        sync_logs(self.api,job,folder,status,settings())
+
     def upload(self, folder):
         ref = json.loads((folder / 'dataset-metadata.json').read_text())['id']
         try:
@@ -163,7 +167,7 @@ class KaggleGateway:
         try:
             token = None
             for _ in range(10):
-                _, token = self.api.kernels_output(kernel, str(folder), file_pattern=r'(^|/)(result\.json|shot-[0-9]{3}\.mp4)$', force=True, quiet=True, page_token=token, page_size=200)
+                _, token = self.api.kernels_output(kernel, str(folder), file_pattern=r'(^|/)(result\.json|shot-[0-9]{3}\.mp4|comfy\.log|cond-[a-f0-9]{64}\.pt)$', force=True, quiet=True, page_token=token, page_size=200)
                 if not token:
                     return
             raise ProviderError('Kaggle çıktı listesi beklenen sınırı aştı.')
@@ -197,7 +201,8 @@ def stage_job(run, folder, manifest, *, bootstrap=False, attempt=0, runtime_sour
             if db.scalar(select(RemoteJob.id).where(RemoteJob.account_slot == c.kaggle_username)):
                 raise RemotePending()
             ident = str(uuid4())
-            slug = f'sahne-{RUNTIME_VERSION}' if bootstrap else 'sahne-' + ident.replace('-', '')
+            slug = (f"sahne-{manifest.get('runtime', RUNTIME_VERSION)}" +
+                ('-'+manifest['component'] if manifest.get('component') else '')) if bootstrap else 'sahne-' + ident.replace('-', '')
             job = RemoteJob(id=ident, run_id=run.id, input_hash=digest, attempt=attempt, kernel=c.kaggle_username + '/' + slug, account_slot=c.kaggle_username)
             db.add(job)
             try:
@@ -207,19 +212,45 @@ def stage_job(run, folder, manifest, *, bootstrap=False, attempt=0, runtime_sour
                 raise RemotePending() from None
     root = folder / 'kaggle' / ident
     root.mkdir(parents=True, exist_ok=True)
-    source = Path(__file__).resolve().parents[1] / 'kaggle' / ('prepare_runtime.py' if bootstrap else 'generate.py')
+    wan = manifest.get('runtime') in ('wan22-q5-v1', 'fastwan5b-v1')
+    source_name = ('prepare_wan.py' if bootstrap else 'generate_wan.py') if wan else ('prepare_runtime.py' if bootstrap else 'generate.py')
+    source = Path(__file__).resolve().parents[1] / 'kaggle' / source_name
     shutil.copyfile(source, root / 'run.py')
+    if wan:
+        names = ('wan_runtime_lock.json','wan_workflow.py','wan_diagnostics.py','wan_prompt_cache.py','wan_acceleration_lock.json',
+                 'fastwan_runtime_lock.json','fastwan_workflow.py')
+        for name in names:
+            shutil.copyfile(source.parent/name,root/name)
+        embedded = {name:(root/name).read_text(encoding='utf-8') for name in names}
+        if bootstrap:
+            embedded['wan-bootstrap.json'] = json.dumps({'component':manifest['component']})
+        prefix = ('from pathlib import Path\nimport sys\nSAHNE_SOURCE_DIR="/kaggle/temp/sahne-source"\n'
+            'Path(SAHNE_SOURCE_DIR).mkdir(parents=True,exist_ok=True)\n'
+            f'for _name,_text in {embedded!r}.items():\n'
+            '    (Path(SAHNE_SOURCE_DIR)/_name).write_text(_text,encoding="utf-8")\n'
+            'sys.path.insert(0,SAHNE_SOURCE_DIR)\n')
+        (root/'run.py').write_text(prefix+source.read_text(encoding='utf-8'),encoding='utf-8')
     sources = []
     if not bootstrap:
         inputs = root / 'inputs'
         inputs.mkdir(exist_ok=True)
         for image in manifest['images']:
             shutil.copyfile(folder / image, inputs / image)
-        (inputs / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+        if wan:
+            for item in manifest.get('conditioning_cache',[]):
+                name=item['file']
+                if not re.fullmatch(r'cond-[a-f0-9]{64}\.pt',name):
+                    raise ProviderError('Geçersiz metin önbelleği dosyası.')
+                cached=folder/'wan-conditioning'/name
+                if not cached.is_file() or not 0<cached.stat().st_size<=64*1024**2 or file_hash(cached)!=item['sha256']:
+                    raise ProviderError('Metin önbelleğinin dosya özeti değişti.')
+                shutil.copyfile(cached,inputs/name)
+        (inputs / ('wan-request.json' if wan else 'manifest.json')).write_text(json.dumps(manifest), encoding='utf-8')
         dataset_slug = 'sahne-input-' + ident.replace('-', '')
         (inputs / 'dataset-metadata.json').write_text(json.dumps({'id': c.kaggle_username + '/' + dataset_slug, 'title': dataset_slug, 'licenses': [{'name': 'other'}]}))
         sources = [c.kaggle_username + '/' + dataset_slug]
-    (root / 'kernel-metadata.json').write_text(json.dumps({'id': job.kernel, 'title': slug, 'code_file': 'run.py', 'language': 'python', 'kernel_type': 'script', 'is_private': True, 'enable_gpu': not bootstrap, 'enable_internet': bootstrap, 'dataset_sources': sources, 'kernel_sources': [runtime_source] if runtime_source else [], 'model_sources': []}), encoding='utf-8')
+    runtime_sources = runtime_source if isinstance(runtime_source,list) else [runtime_source] if runtime_source else []
+    (root / 'kernel-metadata.json').write_text(json.dumps({'id': job.kernel, 'title': slug, 'code_file': 'run.py', 'language': 'python', 'kernel_type': 'script', 'is_private': True, 'enable_gpu': not bootstrap, 'enable_internet': bootstrap, 'dataset_sources': sources, 'kernel_sources': runtime_sources, 'model_sources': []}), encoding='utf-8')
     return job
 
 
@@ -238,6 +269,12 @@ def advance_job(job, folder, gateway, *, bootstrap=False):
         if expired:
             raise ProviderError('Kaggle işi süre sınırını aştı. Uzak iş doğrulanmadan tekrar gönderilmeyecek.') from None
         raise
+    if status != 'missing' and callable(getattr(gateway,'sync_logs',None)):
+        # Observability is best effort and must not change durable job handling.
+        try: gateway.sync_logs(job,root,status)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning('Kaggle job=%s günlük dosyası güncellenemedi; üretim takibi sürüyor',job.id)
     # A worker may have been offline while the finite GPU job finished. Its
     # completed output remains recoverable without submitting another job.
     terminal = ('complete', 'completed', 'error', 'failed', 'cancelled', 'canceled', 'cancel_acknowledged')
@@ -272,7 +309,8 @@ def advance_job(job, folder, gateway, *, bootstrap=False):
             result = json.loads(file.read_text())
         with DB() as db:
             current = db.get(RemoteJob, job.id)
-            current.status, current.result, current.account_slot = 'complete', result, None
+            live = current.result.get('live_clips')
+            current.status, current.result, current.account_slot = 'complete', {**result, **({'live_clips':live} if live else {})}, None
             db.commit()
         return result
     if status in ('error', 'failed', 'cancelled', 'canceled', 'cancel_acknowledged'):
@@ -289,7 +327,11 @@ def advance_job(job, folder, gateway, *, bootstrap=False):
     raise RemotePending()
 
 
-def generate_clips(run, folder, plan, image_paths, check_cancel):
+def generate_clips(run, folder, plan, image_paths, check_cancel, *, on_ready=None):
+    if run.outputs.get('_config',{}).get('video_model_profile','ltx096') in ('wan22_q5_v1','fastwan5b_v1'):
+        from .wan_provider import generate_clips as generate_wan
+        options = {'on_ready': on_ready} if on_ready else {}
+        return generate_wan(run,folder,plan,image_paths,check_cancel,**options)
     from . import media
     check_cancel()
     gateway = KaggleGateway()

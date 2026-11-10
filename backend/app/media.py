@@ -337,7 +337,9 @@ def render(folder, images, audios, durations, srt, check_cancel, music=None, bra
     filters = [f'[0:v]{vf}[captioned]']
     if music:
         args += ['-stream_loop', '-1', '-i', music]
-        filters += ['[1:a]volume=0.08[bg]', '[0:a][bg]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11[audio]']
+        from .sound_design import music_mix_filters
+        filters += music_mix_filters('[0:a]','[1:a]',sum(durations))
+        filters += ['[voice][music]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11[audio]']
     else:
         filters += ['[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[audio]']
     video_label = '[captioned]'

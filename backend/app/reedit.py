@@ -27,7 +27,8 @@ def create_reedit(db, project, user, request, *, commit=True, preserve_editor=Fa
         raise HTTPException(409, 'Yayınlanan veya yükleme sonucu belirsiz sürüm yeniden kurgulanamaz.')
     check_disk()
     retained = deepcopy({k: v for k, v in source.outputs.items() if k in (
-        'supervisor', 'strategy', 'script', 'voice', 'visual', 'motion', '_config', '_brand', '_voice_plan')})
+        'supervisor', 'strategy', 'script', 'voice', 'visual', 'motion', '_config', '_brand', '_voice_plan',
+        '_visual_references','_visual_identity')})
     retained.update(_edit_style=request.style, _edit_only=True, _edit_source_run=source.id)
     retained['_edit_preferences'] = {'instructions': request.instructions, 'map_intro': request.map_intro, 'show_sources': request.show_sources}
     run = Run(id=str(uuid4()), project_id=project.id, user_id=user.id, active_owner=user.id,

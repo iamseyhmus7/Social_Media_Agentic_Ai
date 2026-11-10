@@ -24,7 +24,8 @@ def finalize_scene(scene,result,shots,available,budgets,durations,sources,prefer
                 'scene_index':scene,'error':str(exc),'frame_budget':budgets[scene],
                 'boundary_handle_reserve':18 if scene<len(budgets)-1 else 0,
                 'sources':{ident:available[ident] for ident in ids},'current_segments':result['segments'],
-                'instruction':'Yalnız bu sahnenin kaynak aralığı/seçimini düzelt. Sondaki kaynak geçiş rezervini koru. Başka sahneye dokunma.'},
+                'instruction':'Yalnız bu sahnenin kaynak aralığı/seçimini düzelt. Her parça en fazla 4 saniye olsun; '
+                'art arda aynı çekimi kullanma. Yeterli farklı kaynak seç. Sondaki kaynak geçiş rezervini koru. Başka sahneye dokunma.'},
                 max_attempts=2,repair_fields=True,compact_schema=True)
             if any(s['shot_id'] not in ids or (s.get('design',{}).get('secondary_shot_id') and s['design']['secondary_shot_id'] not in ids) for s in fixed['segments']):
                 raise ValueError('Yerel düzeltme başka sahne kaynağı kullanamaz.')

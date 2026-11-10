@@ -157,11 +157,11 @@ def repair_voice(run_id):
                     candidate=copy.deepcopy(original)
                     for scene,text in zip(candidate['scenes'],self.narrations):
                         scene['narration']=text
-                    validate_engagement(candidate)
+                    validate_engagement(candidate,run.outputs['_config']['engagement_policy'])
                 return self
-        from .script_editorial import SPOKEN_STANDARD
+        from .script_editorial import spoken_standard_for
         patch = decision_call(run_id, Evren().generate, TimedPatch, 'Senaryo Yazarı / Süre düzeltme', {
-            'spoken_standard': SPOKEN_STANDARD,
+            'spoken_standard': spoken_standard_for(run.outputs.get('_config',{}).get('engagement_policy',0)),
             'script': original, 'measured_seconds': measured, 'scene_seconds': run.outputs['voice']['durations'],
             'required_words': target, 'target_seconds': aim, 'history': recovery['history'],
             'preserve_hook': bool(run.outputs.get('_config',{}).get('engagement_policy',0)),
@@ -169,7 +169,8 @@ def repair_voice(run_id):
             + ('kısalt. ' if timing['problem']=='too_long' else 'uzat. ')
             + 'Tarihî bilgileri, olayları, karakterleri ve anlamı koru; yeni olgusal iddia ekleme. '
             'Sahne sayısını koru; her narration boş olmayan bir cümle olmalı. '
-            'preserve_hook doğruysa ilk hook cümlesini aynen koru. Kelime hedefi ±1.'},
+            'preserve_hook doğruysa ilk hook cümlesini aynen koru. Kelime hedefi ±1.'
+            + (' Son cta cümlesini aynen koru ve son narration içinde bırak.' if run.outputs.get('_config',{}).get('engagement_policy',0)>=2 else '')},
             max_attempts=3, repair_fields=True)
         revised = copy.deepcopy(original)
         changed = []

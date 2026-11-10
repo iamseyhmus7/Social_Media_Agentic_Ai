@@ -10,6 +10,114 @@ from backend.app.media_providers import cloudflare_image, elevenlabs_audio
 from backend.app.providers import ProviderError, QuotaExceeded
 
 
+@pytest.mark.parametrize('provider',['pexels','pixabay','unsplash','openverse'])
+def test_catalog_normalizes_license_and_caches_without_credentials(setup,monkeypatch,provider):
+    from backend.app import media_library as library
+    cfg=settings()
+    for key in ('pexels_api_key','pixabay_api_key','unsplash_access_key'):
+        monkeypatch.setattr(cfg,key,'catalog-test-credential')
+    fixtures={
+        'pexels':{'photos':[{'id':1,'alt':'Father and daughter','photographer':'Artist','photographer_url':'https://www.pexels.com/@artist',
+            'url':'https://www.pexels.com/photo/1/','src':{'large2x':'https://images.pexels.com/photos/1/photo.jpg'},'width':1000,'height':1500}]},
+        'pixabay':{'hits':[{'id':2,'tags':'father, daughter','user':'Artist','pageURL':'https://pixabay.com/photos/2/',
+            'largeImageURL':'https://cdn.pixabay.com/photo/2.jpg','imageWidth':1000,'imageHeight':1500}]},
+        'unsplash':{'results':[{'id':'photo-3','alt_description':'Father and daughter','user':{'name':'Artist','links':{'html':'https://unsplash.com/@artist'}},
+            'links':{'html':'https://unsplash.com/photos/photo-3','download_location':'https://api.unsplash.com/photos/photo-3/download'},
+            'urls':{'regular':'https://images.unsplash.com/photo-3?w=1080&ixid=public-reference'},'width':1000,'height':1500}]},
+        'openverse':{'results':[{'id':'4','title':'Father and daughter','creator':'Artist','foreign_landing_url':'https://example.org/photo/4',
+            'url':'https://example.org/4.jpg','width':1000,'height':1500,'license':'by','license_url':'https://creativecommons.org/licenses/by/4.0/'}]},
+    }
+    calls=[];real_client=httpx.Client
+    def respond(request):
+        calls.append(request)
+        if provider=='pexels':assert request.headers['Authorization']=='catalog-test-credential'
+        if provider=='pixabay':assert request.url.params['key']=='catalog-test-credential'
+        if provider=='unsplash':assert request.headers['Authorization']=='Client-ID catalog-test-credential'
+        return httpx.Response(200,json=fixtures[provider])
+    monkeypatch.setattr(library.httpx,'Client',lambda **kw:real_client(transport=httpx.MockTransport(respond),**kw))
+    first=library.catalog_search(provider,'images','father daughter',lambda:None)
+    assert first and first[0]['catalog']==provider and library.licensed(first[0])
+    assert library.catalog_search(provider,'images','father daughter',lambda:None)==first
+    assert len(calls)==1
+    saved=''.join(p.read_text() for p in (cfg.media_root/'.catalog').glob('*.json'))
+    assert 'catalog-test-credential' not in saved
+    if provider=='unsplash':
+        receipt=library.provenance(first[0])
+        assert receipt['preview_url']==fixtures[provider]['results'][0]['urls']['regular']
+        assert 'utm_source=sahne' in receipt['creator_url']
+
+
+def test_catalog_outage_preserves_other_results_and_redacts_query_key(setup,monkeypatch,caplog):
+    from backend.app import media_library as library
+    monkeypatch.setattr(settings(),'pexels_api_key','fake-pexels-key')
+    monkeypatch.setattr(settings(),'pixabay_api_key','fake-pixabay-key')
+    caplog.set_level('INFO',logger='httpx')
+    real_client=httpx.Client
+    def respond(request):
+        if request.url.host=='api.pexels.com':return httpx.Response(401,text='fake-pexels-key')
+        if request.url.host=='api.openverse.org':return httpx.Response(429,json={})
+        return httpx.Response(200,json={'hits':[{'id':2,'tags':'phone','user':'Artist',
+            'pageURL':'https://pixabay.com/photos/2/','largeImageURL':'https://cdn.pixabay.com/photo/2.jpg',
+            'imageWidth':1000,'imageHeight':1500}]})
+    monkeypatch.setattr(library.httpx,'Client',lambda **kw:real_client(transport=httpx.MockTransport(respond),**kw))
+    result=library.search('images','phone',lambda:None)
+    assert result and result[0]['catalog']=='pixabay'
+    assert 'fake-pixabay-key' not in caplog.text and 'fake-pexels-key' not in caplog.text
+    with pytest.raises(ProviderError) as error:
+        library.catalog_search('pexels','images','phone',lambda:None)
+    assert 'fake-pexels-key' not in str(error.value)
+
+
+def test_openverse_oauth_reuses_token_and_unsplash_tracking_uses_fixed_api_host(setup,monkeypatch):
+    from backend.app import media_library as library
+    cfg=settings()
+    monkeypatch.setattr(cfg,'openverse_client_id','test-client')
+    monkeypatch.setattr(cfg,'openverse_client_secret','test-secret')
+    monkeypatch.setattr(cfg,'unsplash_access_key','test-access')
+    library._openverse_token.clear()
+    calls=[];real_client=httpx.Client
+    def respond(request):
+        calls.append(request)
+        if request.url.path=='/v1/auth_tokens/token/':
+            assert b'grant_type=client_credentials' in request.content
+            assert b'client_secret=test-secret' in request.content
+            return httpx.Response(200,json={'access_token':'test-token','expires_in':3600})
+        if request.url.host=='api.openverse.org':
+            assert request.headers['Authorization']=='Bearer test-token'
+            return httpx.Response(200,json={'results':[]})
+        assert request.url.host=='api.unsplash.com' and request.url.path=='/photos/photo-3/download'
+        assert request.headers['Authorization']=='Client-ID test-access'
+        return httpx.Response(200,json={'url':'https://images.unsplash.com/photo-3'})
+    monkeypatch.setattr(library.httpx,'Client',lambda **kw:real_client(transport=httpx.MockTransport(respond),**kw))
+    library.catalog_search('openverse','images','phone',lambda:None)
+    library.catalog_search('openverse','images','bicycle',lambda:None)
+    assert sum(request.url.path=='/v1/auth_tokens/token/' for request in calls)==1
+    library.track_selection({'catalog':'unsplash','id':'photo-3','download_location':'https://untrusted.example/'},lambda:None)
+
+
+def test_audio_search_uses_ccmixter_when_openverse_is_unavailable(tmp_path,monkeypatch):
+    from backend.app import media_library as library
+    monkeypatch.setattr(settings(),'media_root',tmp_path)
+    real_client=httpx.Client
+    row={'upload_id':99,'upload_name':'Instrumental piano','user_real_name':'Artist',
+        'upload_tags':'instrumental,piano','file_page_url':'https://ccmixter.org/files/artist/99',
+        'license_url':'http://creativecommons.org/licenses/by/2.5/',
+        'files':[{'download_url':'https://ccmixter.org/content/artist/99.mp3','file_format_info':{'mime_type':'audio/mpeg'}}]}
+
+    def respond(request):
+        if request.url.host=='api.openverse.org':
+            return httpx.Response(429,json={})
+        assert request.url.host=='ccmixter.org' and request.url.params['lic']=='by'
+        assert request.url.params['search']=='suspense piano'
+        rejected={**row,'upload_id':100,'license_url':'https://creativecommons.org/licenses/by-nc/4.0/'}
+        return httpx.Response(200,json=[rejected,row])
+
+    monkeypatch.setattr(library.httpx,'Client',lambda **kw:real_client(transport=httpx.MockTransport(respond),**kw))
+    tracks=library.search('audio','suspense piano',lambda:None)
+    assert [(track['id'],track['catalog'],track['license_url']) for track in tracks]==[
+        ('99','ccmixter','https://creativecommons.org/licenses/by/2.5/')]
+
+
 def test_probe_uses_bounded_threads_without_changing_explicit_choice(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from backend.app import media
@@ -31,6 +139,7 @@ def remote_config(monkeypatch):
     for key, value in {
         'cloudflare_account_id': 'a' * 32, 'cloudflare_api_token': 'private-token',
         'cloudflare_image_steps': 4, 'elevenlabs_api_key': 'private-key',
+        'cloudflare_image_model':'schnell', 'visual_policy':'legacy',
         'elevenlabs_voice_id': 'test-voice', 'elevenlabs_model': 'eleven_multilingual_v2',
     }.items():
         monkeypatch.setattr(cfg, key, value)

@@ -27,6 +27,65 @@ def test_hook_is_in_actual_spoken_narration_and_closing_needs_no_social_cta():
     with pytest.raises(ValidationError):schema.model_validate(wrong)
 
 
+def test_new_closing_is_spoken_and_old_run_policy_stays_unchanged(monkeypatch):
+    from backend.app.engagement import instruction_for
+    monkeypatch.setattr(settings(),'engagement_policy',2)
+    assert snapshot_settings()['engagement_policy']==2
+    with use_run_settings({'engagement_policy':1}):
+        assert settings().engagement_policy==1
+        assert engaging_script(Script,1).model_validate(sample())
+    payload=sample()
+    payload['cta']='Bu savunmada en kritik kararı yorumlarda paylaş.'
+    schema=engaging_script(Script,2)
+    with pytest.raises(ValidationError):schema.model_validate(payload)
+    payload['scenes'][-1]['narration']+=' '+payload['cta']
+    assert schema.model_validate(payload).scenes[-1].narration.endswith(payload['cta'])
+    assert 'otomatik beğeni veya takip çağrısı ekleme' not in instruction_for(2)
+    assert 'tek bir etkileşim' in instruction_for(2)
+
+
+def test_new_script_agent_places_contextual_cta_in_actual_narration(setup,monkeypatch):
+    from backend.tests.test_agentic import create_run
+    from backend.app import pipeline
+    from backend.app.db import DB,Run
+    ident=create_run({'_config':{'engagement_policy':2},'_edit_style':'classic'})
+    payload=sample();payload['cta']='Bu savunmada en kritik kararı yorumlarda paylaş.'
+    payload['scenes'][-1]['narration']+=' '+payload['cta']
+    def generate(self,schema,role,context,**kwargs):
+        assert context['engagement_policy']==2
+        assert 'tek bir etkileşim' in context['mandatory_engagement']
+        assert 'otomatik beğeni veya takip çağrısı ekleme' not in context['instructions'].lower()
+        return schema.model_validate(payload).model_dump()
+    monkeypatch.setattr(pipeline.Evren,'generate',generate)
+    pipeline.run_stage(ident,'script')
+    with DB() as db:
+        value=db.get(Run,ident).outputs['script']
+        assert value['scenes'][-1]['narration'].endswith(value['cta'])
+
+
+def test_spoken_cta_survives_editorial_writing_supervisor_and_scene_allocation():
+    from backend.tests.test_script_editorial import WriterV2,v2_context,v2_draft
+    from backend.app.script_editorial import StoryDraft,SupervisorVerdict,generate_editorial_script_v2
+    from backend.app.engagement import instruction_for
+    cta='Bu alarmda hangi kontrolü yapardın, yorumlarda paylaş.'
+    class Writer(WriterV2):
+        reviewed=False
+        def generate(self,schema,role,context):
+            if issubclass(schema,StoryDraft):
+                value=v2_draft();value['beats'][-1]['narration']+=' '+cta
+                return schema.model_validate(value).model_dump()
+            if issubclass(schema,SupervisorVerdict):
+                assert context['mandatory_engagement']==instruction_for(2)
+                assert context['draft']['beats'][-1]['narration'].endswith(cta)
+                self.reviewed=True
+            return super().generate(schema,role,context)
+    context={**v2_context(),'engagement_policy':2,'mandatory_engagement':instruction_for(2)}
+    writer=Writer()
+    script,_=generate_editorial_script_v2(writer,engaging_script(Script,2),context,'Konuya özel sesli etkileşimle bitir.')
+    assert writer.reviewed and script['cta']==cta
+    assert script['scenes'][-1]['narration'].endswith(cta)
+
+
 def test_new_defaults_require_parallel_and_old_snapshots_stay_compatible(monkeypatch):
     from backend.app import gpu_profile
     monkeypatch.setattr(settings(),'kaggle_motion_profile','dual_required')
@@ -103,7 +162,7 @@ def test_script_agent_receives_rules_without_user_prompt(setup,monkeypatch):
     from backend.app.db import DB,Run
     ident=create_run({'_config':{'engagement_policy':1},'_edit_style':'classic'})
     def generate(self,schema,role,context,**kwargs):
-        assert 'ilk 1–3 saniyesi' in context['mandatory_engagement']
+        assert '1–3 saniyede' in context['mandatory_engagement']
         assert 'otomatik beğeni veya takip çağrısı ekleme' in context['mandatory_engagement']
         return schema.model_validate(sample()).model_dump()
     monkeypatch.setattr(pipeline.Evren,'generate',generate)

@@ -1,7 +1,6 @@
 from copy import deepcopy
 import pytest
 from backend.app import orchestration as agent
-from backend.app.config import settings
 from backend.app.db import DB,Run
 from backend.app.providers import TransientProviderError,ProviderTimeout,InvalidModelOutput,QuotaExceeded,trace_calls
 from backend.tests.test_agentic import create_run,brief
@@ -47,10 +46,11 @@ def test_legacy_credit_is_evidence_based_once_only_and_preserves_outputs(setup):
         if key!='_agent_turns':assert output(ident)[key]==original[key]
 
 
-def test_real_limit_still_blocks_new_decisions(setup,monkeypatch):
-    monkeypatch.setattr(settings(),'agent_max_turns',12)
-    ident=create_run({'_agent_turns':12})
-    with pytest.raises(RuntimeError,match='karar bütçesi'):agent.decision_call(ident,lambda:pytest.fail('must not call provider'))
+def test_old_decision_limit_no_longer_blocks_resumed_runs(setup):
+    ident=create_run({'_agent_turns':160,'_config':{'agent_max_turns':80},'voice':{'duration':45}})
+    assert agent.decision_call(ident,lambda:'ok')=='ok'
+    assert output(ident)['_agent_turns']==161
+    assert output(ident)['voice']=={'duration':45}
 
 
 def test_supervisor_503_refunds_with_production_retry_budget(setup,monkeypatch):

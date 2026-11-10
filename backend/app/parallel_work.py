@@ -85,7 +85,7 @@ def retry_inference(action,check):
     return settled_map([0],lambda _:action(),1,check)[0]
 
 
-def editor_progress(run_id, group, item, status, detail=''):
+def editor_progress(run_id, group, item, status, detail='', *, asset_path=None):
     if not run_id:return
     from sqlalchemy import select
     from .db import DB,Run,Event
@@ -95,6 +95,9 @@ def editor_progress(run_id, group, item, status, detail=''):
         progress=dict(run.outputs.get('_editor_progress',{}))
         entries=dict(progress.get(group,{}))
         entries[str(item)]={'status':status,'detail':detail[:240]}
+        if asset_path is not None and status=='rendered':
+            from .storage import register
+            entries[str(item)]['asset_id']=register(db,run,asset_path,'render_part',commit=False)
         progress[group]=entries
         run.outputs={**run.outputs,'_editor_progress':progress}
         if status in ('ready','rendered','retry'):

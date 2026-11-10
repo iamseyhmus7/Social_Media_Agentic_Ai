@@ -115,7 +115,7 @@ def test_targeted_render_reuses_verified_source_part(tmp_path, monkeypatch):
     (old / 'video.mp4').write_bytes(b'verified rendered scene')
     (old / 'complete.json').write_text(json.dumps({'key': key, 'range': [30, 59],
         'sha256': file_hash(old / 'video.mp4')}))
-    monkeypatch.setattr(streaming_render, 'editor_progress', lambda *a: None)
+    monkeypatch.setattr(streaming_render, 'editor_progress', lambda *a, **kwargs: None)
     result = queue.render_chunk(key, 1, 'core', 30, 59, {})
     assert result.is_relative_to(queue.parts)
     assert result.read_bytes() == (old / 'video.mp4').read_bytes()
@@ -237,6 +237,100 @@ def test_streaming_model_and_render_overlap_and_late_scene_keeps_order(tmp_path,
     assert rendered[0]==(0,'core',0,29)
     assert sorted((a,b) for _,_,a,b in rendered)==[(0,29),(30,47),(48,59)]
     assert sum(s['frames'] for s in result['segments'])==60
+
+
+def test_ready_scene_renders_without_earlier_source_and_final_reuses_it(tmp_path,monkeypatch):
+    from backend.app import planned_edit, streaming_render
+    from backend.app.providers import perception_model
+    from backend.app.storage import file_hash, workdir
+
+    monkeypatch.setattr(settings(),'media_root',tmp_path)
+    monkeypatch.setattr(streaming_render,'renderer_hash',lambda:'test-code')
+    run,shots,seen=fixtures()
+    run.id,run.project_id=None,'project'
+    run.outputs['_config']={'video_edit_policy':'scenes_v3','editor_streaming_enabled':True}
+    folder=workdir(run.project_id,'run')
+    public=folder/'public';public.mkdir()
+    cache=folder.parent/'perception-cache';cache.mkdir()
+    clips={}
+    rendered=[]
+
+    def make_clip(index):
+        ident=shots[index]['shot_id']
+        path=folder/(ident+'.mp4')
+        path.write_bytes(f'verified original {index}'.encode())
+        (public/path.name).write_bytes(path.read_bytes())
+        clips[ident]={'file':path.name}
+        receipt=planned_edit.perception_cache_path(cache,file_hash(path),perception_model(settings()))
+        receipt.write_text(json.dumps({k:v for k,v in seen[index].items() if k!='shot_id'}),encoding='utf-8')
+
+    class Render(streaming_render.SceneRenderQueue):
+        def render_chunk(self,key,scene,part,start,end,manifest):
+            rendered.append((scene,part,key))
+
+    def edit(model, **options):
+        queue=Render(run,folder,public,shots,[1,1],{'version':2,'style':'auto','duration_frames':60,'sources':[]},lambda:None)
+        try:
+            return planned_edit.prepare_decision(run,folder,shots,[1,1],{ident:90 for ident in clips},
+                model,lambda:None,[],'Konu',{},on_scene=queue.on_scene,**options)
+        finally:
+            queue.close()
+
+    run.outputs['motion']={'clips':clips}
+    make_clip(1)
+    assert edit(Model(),ready_scenes=[1]) is None
+    assert [(scene,part) for scene,part,_ in rendered]==[(1,'core')]
+    assert not (folder/'edit-plan.json').exists()
+    early_key=rendered.pop()[2]
+
+    make_clip(0)
+    final=Model()
+    assert len(edit(final)['segments'])==2
+    assert [context['scene_index'] for _,context,_ in final.calls]==[0]
+    assert (1,'core',early_key) in rendered
+
+
+def test_staging_existing_render_input_keeps_identical_media(tmp_path):
+    from backend.app.remotion_renderer import stage_render_inputs
+    source = tmp_path/'source.mp4'
+    source.write_bytes(b'original clip')
+    args = (tmp_path,[{'shot_id':'shot-001'}],{'shot-001':{'file':source.name}},lambda:None)
+    public = stage_render_inputs(*args)
+    target = public/'shot-001.mp4'
+    before = target.stat().st_mtime_ns
+    assert stage_render_inputs(*args)==public and target.stat().st_mtime_ns==before
+    source.write_bytes(b'repaired clip')
+    stage_render_inputs(*args)
+    assert target.read_bytes()==b'repaired clip'
+
+
+def test_motion_wait_overlaps_music_and_ready_scene_render(tmp_path,monkeypatch):
+    from threading import Barrier
+    from backend.app import agent_progress, media_library, pipeline, remotion_renderer
+
+    run=SimpleNamespace(id='run',outputs={'_edit_style':'auto','_config':{'video_execution_policy':'planned_v1',
+        'video_edit_policy':'scenes_v3','editor_streaming_enabled':True}})
+    project=SimpleNamespace(id='project')
+    monkeypatch.setattr(settings(),'editor_provider','remotion')
+    monkeypatch.setattr(pipeline,'read',lambda _: (run,project,SimpleNamespace(brand={})))
+    monkeypatch.setattr(pipeline,'workdir',lambda *a:tmp_path)
+    monkeypatch.setattr(agent_progress,'mark',lambda *a,**k:None)
+    both_started=Barrier(2,timeout=3)
+    completed=[]
+
+    def music(*args):
+        both_started.wait()
+        completed.append('music')
+
+    def render(run,project,folder,plan,clips,*args):
+        assert list(clips)==['shot-001']
+        both_started.wait()
+        completed.append('editor')
+
+    monkeypatch.setattr(media_library,'select_music',music)
+    monkeypatch.setattr(remotion_renderer,'render_ready_scenes',render)
+    pipeline.work_during_motion_wait(run.id,{}, {'shot-001':{}},object,lambda:None)
+    assert sorted(completed)==['editor','music']
 
 
 def test_partial_failure_keeps_unrelated_successes_even_for_fatal_input():

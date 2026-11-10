@@ -1,5 +1,6 @@
 """Allocate exact measured narration budgets without asking a model to do arithmetic."""
 import math
+from .storyboard import MAX_VISUAL_SECONDS
 
 
 class SceneBudgetError(ValueError):
@@ -44,6 +45,8 @@ def compile_segments(segments, shots, available, budgets, *, require_first_cut=T
             lower,upper,weights = [],[],[]
             for index in positions:
                 segment = segments[index]
+                if index and segments[index-1]['shot_id']==segment['shot_id']:
+                    raise ValueError('Ardışık parçalar farklı görseller kullanmalı.')
                 following = segments[index+1] if index+1<len(segments) else None
                 handle = following['transition_frames'] if following and following['transition']!='cut' else 0
                 if following and lookup[following['shot_id']]!=scene:
@@ -57,7 +60,7 @@ def compile_segments(segments, shots, available, budgets, *, require_first_cut=T
                         raise ValueError('İkinci kadraj aynı anlatım sahnesinden seçilmeli.')
                     capacity = min(capacity,available[secondary])
                 lower.append(segment['transition_frames']+1)
-                upper.append(capacity-segment['source_in_frame']-handle)
+                upper.append(min(round(MAX_VISUAL_SECONDS*30),capacity-segment['source_in_frame']-handle))
                 weights.append(segment['duration_weight'])
             sizes = allocate(total,weights,lower,upper)
             for position,size in zip(positions,sizes):

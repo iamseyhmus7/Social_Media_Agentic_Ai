@@ -122,6 +122,25 @@ class Asset(Base):
     sha256: Mapped[str] = mapped_column(String(64))
 
 
+class VisualReference(Base):
+    __tablename__ = 'visual_references'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), index=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey('assets.id'))
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(16))
+    shot_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class CloudflareBudget(Base):
+    __tablename__ = 'cloudflare_budgets'
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    used: Mapped[float] = mapped_column(Float, default=0)
+    blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Approval(Base):
     __tablename__ = 'approvals'
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

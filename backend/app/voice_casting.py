@@ -41,6 +41,7 @@ def review_audio(path):
 
 
 def save_casting(run_id, state, phase, message=None):
+    from .agent_progress import mark
     candidates = []
     for key in state.get('keys', []):
         voice = next(v for v in state['catalog'] if v['key'] == key)
@@ -61,6 +62,8 @@ def save_casting(run_id, state, phase, message=None):
         if message:
             db.add(Event(run_id=run_id, stage='voice', message=message))
         db.commit()
+    mark(run_id,'voice','casting:'+phase,message or 'Türkçe ses adayları değerlendiriliyor',
+        completed=sum(c.get('status')=='ready' for c in candidates),total=len(candidates) or None)
 
 
 def cast_turkish_voices(run_id, context, llm, check_cancel):
@@ -184,7 +187,8 @@ def cast_turkish_voices(run_id, context, llm, check_cancel):
         'previous_reviews': [record['review'] for record in state['records'].values() if record.get('review')],
         'instructions': 'Ses kayıtları available_voices ile aynı sıradadır; her biri aynı senaryo metnini okur. '
         'Her kaydı ayrı dinle; gerçekten işleyemediysen heard=false, language=unknown yaz. Duyduğun kısa ifadeyi yaz. '
-        'Türkçe telaffuz, anlaşılabilirlik, tempo ve tam senaryonun duygusuna uygunluğu karşılaştır. '
+          'Türkçe telaffuz, anlaşılabilirlik, tempo ve tam senaryonun duygusuna uygunluğu karşılaştır. '
+          'Özellikle hook olan ilk cümlede güçlü sözcük vurgusu, doğrudan giriş ve merak duygusunu değerlendir; bağırmayı kalite sayma. '
         'Her aday için suitability, gerekçe ve sorunları döndür; kararını listedeki gerçekten duyulan Türkçe seslerden ver. '
         'Önceki seçimi alışkanlıkla tekrarlama. Tek videoda tek anlatıcı ve ölçülü stability/style seç. '
         'Bu iki adayın kazananını seç; sonraki turda diğer adayla karşılaştırılacak. '

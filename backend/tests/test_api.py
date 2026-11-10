@@ -7,6 +7,32 @@ from backend.app.storage import media_path, file_hash
 from backend.app.youtube import manifest
 
 
+def test_agent_activity_preserves_completed_work_and_explains_provider_wait():
+    from types import SimpleNamespace
+    from backend.app.agent_progress import snapshot
+    run=SimpleNamespace(stage='visual',status='waiting_provider',error='503',outputs={
+        'script':{'scenes':[{},{}]},'voice':{'audios':['one','two'],'duration':35},
+        '_visual_progress':{'completed':3,'total':14},
+        '_agent_progress':{'visual':{'phase':'model:StockSearchPlan','label':'Açık lisanslı kaynak arama planı hazırlanıyor','updated_at':50}},
+        '_provider_wait':{'automatic':True,'retry_at':120}})
+    progress=snapshot(run)
+    assert progress['voice']['state']=='done' and progress['voice']['completed']==2
+    assert progress['visual']['state']=='waiting' and progress['visual']['completed']==3
+    assert progress['visual']['total']==14 and progress['visual']['retry_at']==120
+    assert 'arama planı' in progress['visual']['label']
+    assert progress['motion']['state']=='pending'
+
+
+def test_gpu_activity_only_exposes_known_safe_structured_fields():
+    from backend.app.agent_progress import kaggle_activity
+    assert kaggle_activity('[Sahne] {"event":"phase","phase":"video_encoding","secret":"hidden"}')=={
+        'phase':'video_encoding','label':'Hazır kareler video dosyasına dönüştürülüyor'}
+    assert kaggle_activity('[Sahne] {"event":"sampling_progress","phase":"high_noise_graph","value":1,"total":2}')[
+        'detail']=='Bu örnekleme aşaması: 1/2 adım'
+    assert kaggle_activity('Bearer private-token [url]') is None
+    assert kaggle_activity('[Sahne] []') is None
+
+
 def ready(project):
     with DB() as db:
         run=Run(id=str(uuid4()),project_id=project['id'],user_id='alice',revision=1,status='awaiting_approval',outputs={'quality':{'passed':True},'editor':{},'publisher':{'title':'Test video','description':'Açıklama','hashtags':['#test']}})

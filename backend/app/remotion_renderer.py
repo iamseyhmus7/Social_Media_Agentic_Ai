@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 from .config import settings
 from .schemas import EditPlan, DynamicEditPlan, EditorialEditPlan, RenderManifest, CaptionWord
 from . import media
-from .storage import media_path
+from .storage import file_hash, media_path
 
 
 def caption_items(srt):
@@ -110,6 +110,83 @@ def render_production(run, project, folder, images, audios, durations, srt, chec
         for renderer in holder:renderer.close()
 
 
+def streaming_queue(run, folder, public, shots, durations, srt, brand, sources, check):
+    from .streaming_render import SceneRenderQueue
+    from .automatic_edit import scene_frames
+    logo = ''
+    if brand.get('logo_path'):
+        from PIL import Image
+        logo = 'brand-logo.png'
+        Image.open(media_path(brand['logo_path'])).convert('RGBA').save(public / logo)
+    base = {'version':2,'style':'auto','duration_frames':sum(scene_frames(durations)),
+        'output_fps':settings().remotion_output_fps,'captions':caption_items(srt),
+        'words':word_items(srt,durations,run.outputs['script']),'sources':sources,
+        'brand':brand.get('name',''),'logo':logo,'color':brand.get('color','#A98BFF'),
+        'reconstruction_label':''}
+    return SceneRenderQueue(run,folder,public,shots,durations,base,check)
+
+
+def stage_render_inputs(folder, shots, clips, check):
+    public = folder / 'render-inputs'
+    public.mkdir(exist_ok=True)
+    for shot in shots:
+        check()
+        ident = shot['shot_id']
+        source = folder / clips[ident]['file']
+        target = public / (ident + '.mp4')
+        if not target.is_file() or file_hash(target) != file_hash(source):
+            shutil.copyfile(source, target)
+    return public
+
+
+def render_ready_scenes(run, project, folder, plan, clips, llm, brand, check):
+    from math import floor
+    from types import SimpleNamespace
+    from .pipeline import asset_path
+    from .editorial_graphics import brief_sources
+    from .planned_edit import digest, prepare_decision
+    from .scene_edit import atomic_json
+    from .agent_progress import mark
+
+    shots = plan['shots']
+    voice = run.outputs['voice']
+    durations = voice['durations']
+    ready = sorted({s['scene_index'] for s in shots} -
+                   {s['scene_index'] for s in shots if s['shot_id'] not in clips})
+    if not ready:
+        return
+    selected = [s for s in shots if s['scene_index'] in ready]
+    signature = digest({'shots':selected,'clips':{s['shot_id']:clips[s['shot_id']]['sha256'] for s in selected},
+        'voice':voice,'brand':brand,'script':run.outputs['script'],'brief':run.outputs.get('supervisor'),
+        'preferences':run.outputs.get('_edit_preferences',{}),'feedback':run.outputs.get('_feedback'),
+        'quality':run.outputs.get('_last_quality')})
+    receipt = folder / 'early-render.json'
+    if receipt.is_file() and json.loads(receipt.read_text(encoding='utf-8')).get('key') == signature:
+        return
+    mark(run.id,'editor','early_render','Kaynakları hazır sahneler kurgulanıyor',parallel=True)
+    # A partial motion snapshot is private to this call. The final editor still
+    # requires the complete durable motion checkpoint.
+    partial = SimpleNamespace(id=run.id,project_id=run.project_id,user_id=run.user_id,
+        outputs={**run.outputs,'motion':{'plan':plan,'clips':clips}})
+    try:
+        sources = brief_sources(project.topic)
+        srt = folder / 'captions.srt'
+        media.subtitles([asset_path(i) for i in voice['audios']],durations,srt,check)
+        public = stage_render_inputs(folder,selected,clips,check)
+        available = {s['shot_id']:floor(clips[s['shot_id']]['report']['duration']*30+.001) for s in selected}
+        stream = streaming_queue(partial,folder,public,shots,durations,srt,brand,sources,check)
+        try:
+            prepare_decision(partial,folder,shots,durations,available,llm,check,sources,project.topic,
+                run.outputs.get('_edit_preferences',{}),on_scene=stream.on_scene,ready_scenes=ready)
+        finally:
+            stream.close()
+    finally:
+        # Retry through the normal editor or when a new set of sources arrives.
+        check()
+        atomic_json(receipt,{'key':signature})
+    mark(run.id,'editor','early_wait','Hazırlanan kurgu parçaları kaydedildi, kalan kaynaklar bekleniyor',parallel=False)
+
+
 def _render_production(run, project, folder, images, audios, durations, srt, check, llm, context, music, brand, *, preview_only=False, stream_holder):
     cfg = settings()
     root = cfg.remotion_root.resolve() / 'production'
@@ -128,24 +205,9 @@ def _render_production(run, project, folder, images, audios, durations, srt, che
     stream=None
     if style == 'auto':
         from .automatic_edit import prepare_automatic
-        public = folder / 'render-inputs'
-        public.mkdir(exist_ok=True)
-        for shot in shots:
-            ident = shot['shot_id']
-            shutil.copyfile(folder / motion['clips'][ident]['file'], public / (ident + '.mp4'))
+        public = stage_render_inputs(folder,shots,motion['clips'],check)
         if run.outputs.get('_config',{}).get('editor_streaming_enabled',False):
-            from .streaming_render import SceneRenderQueue
-            from .automatic_edit import scene_frames
-            logo=''
-            if brand.get('logo_path'):
-                from PIL import Image
-                logo='brand-logo.png'
-                Image.open(media_path(brand['logo_path'])).convert('RGBA').save(public/logo)
-            base={'version':2,'style':'auto','duration_frames':sum(scene_frames(durations)), 'output_fps':cfg.remotion_output_fps,
-                'captions':caption_items(srt),'words':word_items(srt,durations,run.outputs['script']),
-                'sources':sources,'brand':brand.get('name',''),'logo':logo,'color':brand.get('color','#A98BFF'),
-                'reconstruction_label':''}
-            stream=SceneRenderQueue(run,folder,public,shots,durations,base,check)
+            stream=streaming_queue(run,folder,public,shots,durations,srt,brand,sources,check)
             stream_holder.append(stream)
         decision, clips = prepare_automatic(run, folder, shots, durations, llm, check, sources=sources, brief=project.topic,
             **({'on_scene':stream.on_scene} if stream else {}))
@@ -198,13 +260,15 @@ def _render_production(run, project, folder, images, audios, durations, srt, che
             source = folder / motion['clips'][ident]['file'] if moving else images[shot['scene_index']]
             filename = ident + ('.mp4' if moving else '.png')
             shutil.copyfile(source, public / filename)
-            elapsed += shot['duration_seconds']
+            elapsed += durations[shot['scene_index']]/sum(s['scene_index']==shot['scene_index'] for s in shots)
             end = round(elapsed * 30)
             clips.append({'file': filename, 'kind': 'clip' if moving else 'image', 'start_frame': cursor, 'frames': end - cursor,
                           'transition': edit['transition'], 'title': edit['title'], 'transition_frames': edit['transition_frames'],
                           'punch_in': edit['punch_in'] if style in ('dynamic', 'editorial') else False,
                           'scene_index': shot['scene_index']})
             cursor = end
+        if any(clip['frames']>120 for clip in clips):
+            raise RuntimeError('Görsel değişim aralığı 4 saniyeyi aşamaz; ek çekim gerekiyor.')
     logo = ''
     if brand.get('logo_path'):
         from PIL import Image
@@ -246,6 +310,8 @@ def _render_production(run, project, folder, images, audios, durations, srt, che
         from .preview import verify_preview
         verify_preview(folder, run.outputs.get('_editor_preview', {}))
     if not stream:
+        from .agent_progress import mark
+        mark(run.id,'editor','render','Video görüntüsü oluşturuluyor')
         render_visual([cfg.node_bin, root / 'render.mjs', manifest_path, public, folder / 'visual-edit.mp4', cfg.remotion_browser_executable], folder, check)
     # Audio stays at its original speed. The concat demuxer uses measured WAV durations.
     for i, audio in enumerate(audios):
@@ -271,11 +337,15 @@ def _render_production(run, project, folder, images, audios, durations, srt, che
         labels.append('[fx]')
     if music:
         index = 3 if has_effects else 2
-        filters.append(f"[{index}:a]volume={mix['music_gain']}[music]")
+        from .sound_design import music_mix_filters
+        filters = music_mix_filters('[1:a]',f'[{index}:a]',cursor/30,
+            voice_gain=mix['narration_gain'],music_gain=mix['music_gain']) + filters[1:]
         labels.append('[music]')
     filters.append(''.join(labels)+f"amix=inputs={len(labels)}:duration=first:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11[a]")
     args += ['-filter_complex', ';'.join(filters), '-map', '0:v', '-map', '[a]']
     args += ['-c:v', 'copy', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', 'video.mp4']
+    from .agent_progress import mark
+    mark(run.id,'editor','audio_mix','Konuşma, efekt ve arka plan müziği dengeleniyor' if music else 'Konuşma ve efektler dengeleniyor')
     media.command(args, folder, check)
     report = media.validate_final(folder, srt, check, target=project.duration, expected_fps=manifest['output_fps'])
     if stream:report['streaming_render']={'method':'ordered_cached_frame_ranges','manifest':'visual-parts-complete.json','audio_speed_changed':False}

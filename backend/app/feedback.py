@@ -171,7 +171,10 @@ def process_feedback(feedback_id):
                 outputs.pop('_storyboard', None)
             outputs.update(_feedback={'prompt': prompt, **result}, _changed_scenes=scenes,
                 _repair_stages=result['stages'], _edit_only=not bool(set(result['stages'])-{'editor','publisher'}),
-                _config=snapshot_settings(), _requested_duration=project.duration, _previous_script=inputs['script'])
+                _config={**snapshot_settings(),**{k:inputs.get('_config',{}).get(k,v) for k,v in {
+                    'visual_policy':'legacy','video_model_profile':'ltx096','cloudflare_image_model':'schnell',
+                    'wan_runtime_source':'','image_model_policy':'auto'}.items()}},
+                _requested_duration=project.duration, _previous_script=inputs['script'])
             from .audio_reuse import voice_config
             if ('voice' in result['stages'] or ('voice' in removed and
                     voice_config(inputs.get('_config',{}))!=voice_config(outputs['_config']))):

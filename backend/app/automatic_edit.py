@@ -8,6 +8,7 @@ from pydantic import model_validator, Field
 from .schemas import AutoEditPlan, ClipObservation, SCENE_CAPABILITIES
 from .config import settings
 from . import media
+from .storyboard import MAX_VISUAL_SECONDS
 
 
 def verified_edit_base(run, folder, check):
@@ -61,10 +62,16 @@ def validate_decision(decision, shots, available, durations, *, enforce_reviews=
         raise ValueError('Her kaynak çekim için tam bir görsel gözlem gerekli.')
     totals = [0] * len(durations)
     last_scene = -1
+    previous_shot = None
     for item in decision['segments']:
         ident = item['shot_id']
         if ident not in lookup:
             raise ValueError('Kurgu yalnızca mevcut çekimleri kullanabilir.')
+        if item['frames']>round(MAX_VISUAL_SECONDS*30):
+            raise ValueError('Bir görsel ekranda en fazla 4 saniye kalabilir; farklı çekim seç.')
+        if ident==previous_shot:
+            raise ValueError('Ardışık parçalar aynı görseli sürdüremez; farklı çekime geç.')
+        previous_shot=ident
         scene = lookup[ident]['scene_index']
         if not 0 <= scene < len(totals) or scene < last_scene:
             raise ValueError('Sesli anlatımın olay sırası korunmalı; çekimler yalnızca kendi sahnesinde düzenlenebilir.')

@@ -30,16 +30,16 @@ def file_hash(path):
     return sha.hexdigest()
 
 
-def register(db, run, path, kind):
+def register(db, run, path, kind, *, commit=True):
     relative = Path(path).resolve().relative_to(settings().media_root.resolve()).as_posix()
     existing = db.scalar(select(Asset).where(Asset.run_id == run.id, Asset.path == relative))
     if existing:
         existing.sha256 = file_hash(path)
-        db.commit()
+        if commit: db.commit()
         return existing.id
     asset = Asset(id=str(uuid4()), project_id=run.project_id, run_id=run.id, revision=run.revision, kind=kind, path=relative, mime=mimetypes.guess_type(str(path))[0] or 'application/octet-stream', sha256=file_hash(path))
     db.add(asset)
-    db.commit()
+    if commit: db.commit()
     return asset.id
 
 

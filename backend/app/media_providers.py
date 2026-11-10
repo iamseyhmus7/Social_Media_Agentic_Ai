@@ -22,11 +22,12 @@ class VoiceAccessDenied(ProviderError):
     """This specific voice is unavailable; never an account-wide auth failure."""
 
 
-def request_media(url, headers, payload, check_cancel, *, transport=None, params=None, method='POST'):
+def request_media(url, headers, payload, check_cancel, *, transport=None, params=None, method='POST', files=None):
     check_cancel()
     try:
         with httpx.Client(timeout=httpx.Timeout(120, connect=15), transport=transport) as client:
-            with client.stream(method, url, headers=headers, json=payload, params=params) as response:
+            body = {'data':payload, 'files':files} if files is not None else {'json':payload}
+            with client.stream(method, url, headers=headers, params=params, **body) as response:
                 error_status = None
                 if response.status_code in (500,502,503,504):
                     raise TransientProviderError(f'Medya hizmeti bekleniyor (HTTP {response.status_code}).',
@@ -44,6 +45,15 @@ def request_media(url, headers, payload, check_cancel, *, transport=None, params
                         error_status = detail.get('status') if isinstance(detail, dict) else None
                     except (ValueError, AttributeError):
                         pass
+                    if url.startswith('https://api.cloudflare.com/') and response.status_code==429:
+                        try:
+                            quota = any(str(e.get('code'))=='4006' or 'daily' in e.get('message','').lower()
+                                for e in json.loads(body).get('errors',[]))
+                        except (ValueError,AttributeError,TypeError):
+                            quota = False
+                        if not quota:
+                            raise TransientProviderError('Cloudflare istek hızı sınırına ulaşıldı; günlük kota dolduğu doğrulanmadı.',
+                                http_status=429,retry_after=response.headers.get('retry-after'))
                     if error_status in ('detected_unusual_activity', 'unusual_activity_detected'):
                         raise ProviderError('ElevenLabs ücretsiz kullanım güvenlik denetimi isteği reddetti. Hesap/panel üzerinden sağlayıcının erişim uyarısını çöz; otomatik yeniden deneme yapılmadı.')
                     elevenlabs = url.startswith('https://api.elevenlabs.io/')
@@ -74,21 +84,65 @@ def request_media(url, headers, payload, check_cancel, *, transport=None, params
         raise TransientProviderError('Medya sağlayıcısına bağlanılamadı veya yanıt zaman aşımına uğradı.') from None
 
 
-def cloudflare_image(prompt, target, check_cancel, *, transport=None):
+def cloudflare_image(prompt, target, check_cancel, *, transport=None, model=None, references=(), seed=None):
     import json
     cfg = settings()
     if not cfg.cloudflare_api_token or not re.fullmatch(r'[a-fA-F0-9]{32}', cfg.cloudflare_account_id):
         raise ProviderError('Cloudflare için CLOUDFLARE_ACCOUNT_ID ve CLOUDFLARE_API_TOKEN ayarlanmalı.')
-    if not 1 <= cfg.cloudflare_image_steps <= 8:
+    selected = model or cfg.cloudflare_image_model
+    models = {'schnell':'@cf/black-forest-labs/flux-1-schnell',
+              'klein':'@cf/black-forest-labs/flux-2-klein-9b', 'lucid':'@cf/leonardo/lucid-origin'}
+    if selected not in models or (references and selected != 'klein') or len(references)>4:
+        raise ProviderError('Görsel modeli veya referans desteği geçersiz; referanslar yalnız Klein ile kullanılabilir.')
+    if selected == 'schnell' and not 1 <= cfg.cloudflare_image_steps <= 8:
         raise ProviderError('CLOUDFLARE_IMAGE_STEPS 1–8 arasında olmalı.')
-    raw = request_media(
-        f'https://api.cloudflare.com/client/v4/accounts/{cfg.cloudflare_account_id}/ai/run/@cf/black-forest-labs/flux-1-schnell',
+    payload = {'prompt':prompt[:2048]}
+    files = None
+    sizes = []
+    if selected != 'schnell':
+        payload.update(width=576, height=1024)
+    if seed is not None and selected != 'schnell':
+        payload['seed'] = seed
+    steps = cfg.cloudflare_image_steps if selected == 'schnell' else 25
+    if selected == 'lucid':
+        payload.update(num_steps=25, guidance=4.5)
+    elif selected == 'schnell':
+        payload['steps'] = steps
+    else:
+        # Force multipart even for a text-only request; JSON is not supported.
+        files = {k:(None,str(v)) for k,v in payload.items()}
+        payload = {}
+        for index, path in enumerate(references):
+            with Image.open(path) as source:
+                reference = source.convert('RGB')
+                reference.thumbnail((511,511))
+                sizes.append(reference.size)
+                buffer = io.BytesIO()
+                reference.save(buffer,format='PNG')
+            files[f'input_image_{index}'] = (f'reference-{index}.png',buffer.getvalue(),'image/png')
+    reservation = None
+    if cfg.visual_policy == 'references_v1':
+        from .image_budget import reserve, estimate
+        check_cancel()
+        reservation = reserve(estimate(selected,576 if selected!='schnell' else 1024,1024,steps,sizes))
+    try:
+        raw = request_media(
+        f'https://api.cloudflare.com/client/v4/accounts/{cfg.cloudflare_account_id}/ai/run/{models[selected]}',
         {'Authorization': f'Bearer {cfg.cloudflare_api_token}'},
-        {'prompt': prompt[:2048], 'steps': cfg.cloudflare_image_steps}, check_cancel, transport=transport,
-    )
+        payload, check_cancel, transport=transport, **({'files':files} if files is not None else {}))
+    except QuotaExceeded:
+        if reservation:
+            from .image_budget import block
+            block(reservation)
+        raise QuotaExceeded('Cloudflare hesabının ortak kotası/erişim sınırı doldu. Model değiştirmek yeni kota sağlamaz. Günlük kota Türkiye saatiyle 03.00’te yenilenir; hazır görseller korundu.') from None
     try:
         result = json.loads(raw)
         if result.get('success') is False:
+            if any(error.get('code')==4006 for error in result.get('errors',[]) if isinstance(error,dict)):
+                if reservation:
+                    from .image_budget import block
+                    block(reservation)
+                raise QuotaExceeded('Cloudflare ortak günlük kotası doldu; diğer modeller de aynı kotayı kullanır. Yenilenme Türkiye saatiyle 03.00.')
             raise ProviderError('Cloudflare görsel üretimini reddetti. Workers AI panelindeki kota ve erişimi kontrol et.')
         image_bytes = base64.b64decode(result['result']['image'], validate=True)
         with Image.open(io.BytesIO(image_bytes)) as generated:
@@ -97,6 +151,9 @@ def cloudflare_image(prompt, target, check_cancel, *, transport=None):
             # Cloudflare Schnell does not expose width/height. Preserve its image;
             # the existing montage handles scaling/cropping into the vertical frame.
             generated.convert('RGB').save(target, format='PNG')
+            return {'model':models[selected], 'model_key':selected, 'width':generated.width,
+                    'height':generated.height, 'steps':steps if selected!='klein' else 'provider_fixed',
+                    'seed':seed, 'reference_count':len(references)}
     except (ValueError, KeyError, TypeError, AttributeError, binascii.Error, UnidentifiedImageError, OSError):
         raise ProviderError('Cloudflare geçerli bir görsel döndürmedi.') from None
 

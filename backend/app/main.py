@@ -31,6 +31,8 @@ async def lifespan(_app):
 
 
 app = FastAPI(title='Sahne API', version='0.1.0', lifespan=lifespan)
+from .media_routes import router as media_router
+app.include_router(media_router)
 attempts = defaultdict(deque)
 
 
@@ -98,20 +100,36 @@ def run_data(db, run):
         'approved_text':editorial.get('draft') if editorial.get('approved') else None,
         'review_reason':(editorial.get('visual_reviews') or [{}])[-1].get('reason')}
     result['editor_progress'] = run.outputs.get('_editor_progress',{})
+    result['voice_progress'] = run.outputs.get('_voice_progress',{})
     result['provider_wait'] = run.outputs.get('_provider_wait',{})
     from .recovery import initial
     result['recovery'] = initial(run.outputs)
     from .visual_progress import visual_progress
     result['visual_progress'] = visual_progress(run.outputs)
+    result['media_review'] = run.outputs.get('_media_review')
+    result['media_profile'] = {key:run.outputs.get('_config',{}).get(key) for key in ('visual_policy','video_model_profile','cloudflare_image_model')}
+    result['source_shots'] = (run.outputs.get('visual',{}).get('storyboard') or run.outputs.get('_storyboard',{})).get('shots',[])
     result['edit_style'] = run.outputs.get('_edit_style', 'classic')
     result['outputs'] = {k: v for k, v in run.outputs.items() if not k.startswith('_')}
     result['agents'] = [a['id'] for a in AGENTS if run.pipeline_version >= 2 or a['id'] != 'motion']
+    jobs = db.scalars(select(RemoteJob).where(RemoteJob.run_id == run.id).order_by(RemoteJob.created)).all()
     result['remote_jobs'] = [{'status': j.status, 'attempt': j.attempt, 'version': j.version, 'created': j.created,
-                             'completed_clips': len(j.result.get('clips', {})), 'failed_clips': len(j.result.get('errors', {}))}
-                            for j in db.scalars(select(RemoteJob).where(RemoteJob.run_id == run.id).order_by(RemoteJob.created))]
+                             'completed_clips': max(len(j.result.get('clips', {})),len(j.result.get('live_clips', {}))),
+                             'failed_clips': len(j.result.get('errors', {}))} for j in jobs]
+    result['motion_previews'] = {}
+    for job in jobs:
+        if job.status != 'discarded' and job.created >= run.outputs.get('_motion_preview_since',0):
+            for shot,item in job.result.get('live_clips',{}).items():
+                result['motion_previews'][shot] = {**result['motion_previews'].get(shot,{}), **item}
     result['assets'] = [{'id': a.id, 'kind': a.kind, 'url': f'/api/v1/assets/{a.id}'} for a in db.scalars(select(Asset).where(Asset.run_id == run.id))]
     publication = db.scalar(select(Publication).where(Publication.run_id == run.id))
     result['publication'] = publication_data(publication)
+    from .agent_progress import snapshot as agent_snapshot
+    result['agent_progress'] = agent_snapshot(run,remote_jobs=result['remote_jobs'],
+        script_progress=result['script_progress'],publication=result['publication'])
+    if result['motion_previews'] and 'motion' not in run.outputs:
+        progress=result['agent_progress']['motion']
+        progress['completed']=max(progress.get('completed') or 0,len(result['motion_previews']))
     return result
 
 
@@ -309,6 +327,9 @@ def start_run(project_id: str, data: RunOptions | None = None, user=Depends(curr
         '_brand': {k:v for k,v in user.brand.items() if k!='voice'}, '_edit_style': 'auto',
         '_requested_duration': None if project.duration_auto else project.duration,
         '_recovery': {'version':1,'voice':{'text_used':0,'speed_used':0,'history':[]}}})
+    from .visual_quality import reference_snapshot
+    run.outputs = {**run.outputs, '_visual_references':reference_snapshot(db,project.id)}
+    run.outputs = {**run.outputs, '_config':{**run.outputs['_config'],'image_model_policy':'klein'}}
     db.add(run)
     try:
         db.commit()

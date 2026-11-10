@@ -56,6 +56,7 @@ class Plan(Strict):
 
 class RunOptions(Strict):
     script_only: bool = False
+    image_model_policy: Literal['auto','klein','lucid'] = 'klein'
 
 
 class Strategy(Strict):
@@ -147,10 +148,51 @@ class StoryShot(ShotPlan):
     reference_prompt: str = Field(min_length=20, max_length=1100)
     purpose: str = Field(min_length=5, max_length=300)
     expected_action: str = Field(min_length=5, max_length=400)
+    state_before: str = Field(default='', max_length=500)
+    state_after: str = Field(default='', max_length=500)
+    preserve: str = Field(default='', max_length=500)
+    continuity_group: str = Field(default='', max_length=80)
+    image_model: Literal['klein', 'lucid'] = 'klein'
+    model_reason: str = Field(default='', max_length=300)
 
 
 class Storyboard(Strict):
     shots: list[StoryShot] = Field(min_length=1, max_length=32)
+    visual_identity: str = Field(default='', max_length=2000)
+
+
+class ImageReview(Strict):
+    verdict: Literal['pass', 'uncertain', 'reject']
+    findings: list[str] = Field(default_factory=list, max_length=8)
+    correction: str = Field(default='', max_length=1000)
+
+
+class SourceClipReview(ImageReview):
+    repair_stage: Literal['visual','motion'] = 'motion'
+
+    @field_validator('findings', mode='before')
+    @classmethod
+    def limit_findings(cls, value):
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            return value[:8]
+        return value
+
+
+class ReferencePatch(Strict):
+    active: bool
+
+
+class ShotChange(Strict):
+    run_id: str
+    action: Literal['image', 'motion', 'pin']
+    instructions: str = Field(default='', max_length=1500)
+    shot_ids: list[str] = Field(default_factory=list,max_length=32)
+
+
+class MediaReviewAnswer(Strict):
+    shot_id: str = Field(pattern=r'^shot-[0-9]{3}$')
+    asset_id: str
+    accept: bool
 
 
 class ClipObservation(Strict):

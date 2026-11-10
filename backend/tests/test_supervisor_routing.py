@@ -172,8 +172,8 @@ def test_mimo_full_brief_uses_actual_audio_provider_and_pending_checks(setup,mon
         assert schema.__name__=='ProductionBrief' and role=='Supervisor'
         assert context['audio_backend']['provider']=='elevenlabs'
         assert 'voice' not in context['brand']
-        assert 'henüz yapılmamış denetimi' in context['instruction']
-        assert 'kaynak doğrulaması iste' in context['instruction']
+        assert 'yapılmamış kontrol sonucunu uydurma' in context['instruction']
+        assert 'Sağlanan bilgi moduna göre tutarlılığı denetle' in context['instruction']
         assert kwargs=={'repair_fields':True}
         return {**brief(),'execution_plan':execution_plan()}
     monkeypatch.setattr(agent.Evren,'generate',generate)

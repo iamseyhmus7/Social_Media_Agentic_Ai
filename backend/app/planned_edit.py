@@ -10,7 +10,7 @@ from . import media
 from .providers import PERCEPTION_ROLE, perception_model, configure_editor_timeout
 
 PERCEPTION_VERSION = 'sampled-3-v1'
-COMPILER_VERSION = 'weighted-v2'
+COMPILER_VERSION = 'weighted-v3-cadence4'
 
 
 def digest(value):
@@ -25,18 +25,19 @@ def perception_cache_path(cache, clip_hash, model, reuse_models=()):
     return next((path for path in paths if path.is_file()), paths[0])
 
 
-def prepare_decision(run, folder, shots, durations, available, llm, check, sources, brief, preferences, on_scene=None):
+def prepare_decision(run, folder, shots, durations, available, llm, check, sources, brief, preferences, on_scene=None, *, ready_scenes=None):
     from .automatic_edit import scene_frames, validate_decision
     # Cache is confined to this owned project, never shared across users.
     cache = workdir(run.project_id,run.id).parent/'perception-cache'
     cache.mkdir(exist_ok=True)
     hashes = {}
-    for shot in shots:
+    selected = shots if ready_scenes is None else [s for s in shots if s['scene_index'] in ready_scenes]
+    for shot in selected:
         check()
         ident = shot['shot_id']
         hashes[ident] = file_hash(folder/run.outputs['motion']['clips'][ident]['file'])
     scene_mode = run.outputs.get('_config',{}).get('video_edit_policy') == 'scenes_v3'
-    compiler_version = 'scene-v3' if scene_mode else COMPILER_VERSION
+    compiler_version = 'scene-v4-cadence4' if scene_mode else COMPILER_VERSION
     if scene_mode and hasattr(llm,'timeout'):
         configure_editor_timeout(llm)
     signature = digest({'version':compiler_version,'sources':hashes,'shots':shots,'durations':durations,
@@ -44,7 +45,7 @@ def prepare_decision(run, folder, shots, durations, available, llm, check, sourc
         'preferences':preferences,'feedback':run.outputs.get('_feedback'),
         'findings':run.outputs.get('_last_quality'),'capabilities':SCENE_CAPABILITIES,'references':sources})
     plan_path, marker = folder/'edit-plan.json',folder/'edit-plan-input.json'
-    if marker.is_file() and plan_path.is_file() and json.loads(marker.read_text(encoding='utf-8')).get('key')==signature:
+    if ready_scenes is None and marker.is_file() and plan_path.is_file() and json.loads(marker.read_text(encoding='utf-8')).get('key')==signature:
         decision = AutoEditPlan.model_validate_json(plan_path.read_text(encoding='utf-8')).model_dump()
         validate_decision(decision,shots,available,durations,enforce_reviews=False,sources=sources,preferences=preferences,require_handles=True)
         return decision
@@ -81,16 +82,34 @@ def prepare_decision(run, folder, shots, durations, available, llm, check, sourc
     if scene_mode:
         from .parallel_work import bounded_map,settled_map,editor_progress
         unique={}
-        for shot in shots:unique.setdefault(hashes[shot['shot_id']],shot)
+        for shot in selected:unique.setdefault(hashes[shot['shot_id']],shot)
         streaming=run.outputs.get('_config',{}).get('editor_streaming_enabled',False)
-        facts=(settled_map(list(unique.values()),perceive,cfg.editor_parallelism,check,
-            on_success=lambda shot,value:editor_progress(getattr(run,'id',None),'perception',shot['shot_id'],'ready'),
-            on_error=lambda shot,exc,attempt:editor_progress(getattr(run,'id',None),'perception',shot['shot_id'],'retry',str(exc)))
-            if streaming else bounded_map(list(unique.values()),perceive,cfg.editor_parallelism,check))
-        by_hash=dict(zip(unique,facts))
-        observations=[{'shot_id':shot['shot_id'],**by_hash[hashes[shot['shot_id']]]} for shot in shots]
+        by_hash = {}
+        if streaming:
+            def perceived(shot, value):
+                by_hash[hashes[shot['shot_id']]] = value
+                editor_progress(getattr(run,'id',None),'perception',shot['shot_id'],'ready')
+            try:
+                settled_map(list(unique.values()),perceive,cfg.editor_parallelism,check,on_success=perceived,
+                    on_error=lambda shot,exc,attempt:editor_progress(getattr(run,'id',None),'perception',shot['shot_id'],'retry',str(exc)))
+            except media.Cancelled:
+                raise
+            except Exception:
+                if ready_scenes is None:
+                    raise
+                blocked = {s['scene_index'] for s in selected if hashes[s['shot_id']] not in by_hash}
+                ready_scenes = [scene for scene in ready_scenes if scene not in blocked]
+                if not ready_scenes:
+                    raise
+                selected = [s for s in selected if s['scene_index'] in ready_scenes]
+        else:
+            by_hash = dict(zip(unique,bounded_map(list(unique.values()),perceive,cfg.editor_parallelism,check)))
+        observations=[{'shot_id':shot['shot_id'],**by_hash[hashes[shot['shot_id']]]} for shot in selected]
         from .scene_edit import decide, atomic_json
-        decision=decide(run,folder,shots,durations,available,observations,llm,check,sources,brief,preferences,hashes,on_scene=on_scene)
+        options = {'ready_scenes': ready_scenes} if ready_scenes is not None else {}
+        decision=decide(run,folder,shots,durations,available,observations,llm,check,sources,brief,preferences,hashes,on_scene=on_scene,**options)
+        if ready_scenes is not None:
+            return
         atomic_json(plan_path,decision)
         atomic_json(marker,{'key':signature,'compiler':compiler_version})
         return decision
@@ -103,6 +122,7 @@ def prepare_decision(run, folder, shots, durations, available, llm, check, sourc
         'Bu gözlemlerin YENİ senaryoya uygunluğunu observations içinde pass/uncertain/reject ile değerlendir. '
         'MiMo olarak çekim sırasını, tempoyu duration_weight ile, kaynak başlangıcını source_in_frame ile ve efektleri seç. '
         'Kesin segment kare sayılarını sunucu derleyecek. Yeterli toplam kaynak süresi seç, hareketi dondurma/döngüleme. '
+        'Her görsel en fazla 4 saniye gösterilir; peş peşe aynı shot_id kullanma, yeterli farklı kaynak seç. '
         'Anlatım sırasını koru, her çekim yalnız kendi sahnesinde; ilk geçiş cut. '
         'Geçişte önceki çekimde transition_frames kadar ek kaynak gerekir. İkinci kadraj aynı sahneden olmalı. '
         'Grafikler ve ses işaretleri sahne içi start_frame/frames ile bütçeye sığmalı. '
